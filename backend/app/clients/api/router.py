@@ -20,19 +20,28 @@ def _empresa_id(usuario: UsuarioAtualDep) -> UUID:
     return usuario.empresa_id
 
 
+def _to_response(c: object) -> ClienteResponse:
+    return ClienteResponse(
+        id=UUID(c.id), empresa_id=UUID(c.empresa_id), nome=c.nome,
+        email=c.email, telefone=c.telefone, cpf_cnpj=c.cpf_cnpj,
+        endereco=c.endereco,
+        bairro=getattr(c, 'bairro', None),
+        cidade=getattr(c, 'cidade', None),
+        estado=getattr(c, 'estado', None),
+        observacoes=c.observacoes,
+        vendedor_id=UUID(c.vendedor_id) if getattr(c, 'vendedor_id', None) else None,
+        ativo=c.ativo,
+    )
+
+
 @router.get("", response_model=list[ClienteResponse])
 async def listar(
     usuario: UsuarioAtualDep,
     db: Annotated[AsyncSession, Depends(get_db)],
     busca: str | None = Query(None),
 ) -> list[ClienteResponse]:
-    empresa_id = _empresa_id(usuario)
-    clientes = await ClienteRepository(db).listar(empresa_id, busca)
-    return [ClienteResponse(
-        id=UUID(c.id), empresa_id=UUID(c.empresa_id), nome=c.nome,
-        email=c.email, telefone=c.telefone, cpf_cnpj=c.cpf_cnpj,
-        observacoes=c.observacoes, ativo=c.ativo,
-    ) for c in clientes]
+    clientes = await ClienteRepository(db).listar(_empresa_id(usuario), busca)
+    return [_to_response(c) for c in clientes]
 
 
 @router.post("", response_model=ClienteResponse, status_code=status.HTTP_201_CREATED)
@@ -46,7 +55,13 @@ async def criar(
         empresa_id=empresa_id, nome=body.nome, email=body.email,
         telefone=body.telefone, cpf_cnpj=body.cpf_cnpj, observacoes=body.observacoes,
     )
-    return ClienteResponse(id=UUID(c.id), empresa_id=UUID(c.empresa_id), nome=c.nome, email=c.email, telefone=c.telefone, cpf_cnpj=c.cpf_cnpj, observacoes=c.observacoes, ativo=c.ativo)
+    c.endereco = body.endereco
+    c.bairro = body.bairro
+    c.cidade = body.cidade
+    c.estado = body.estado
+    c.vendedor_id = str(body.vendedor_id) if body.vendedor_id else None
+    await ClienteRepository(db).salvar(c)
+    return _to_response(c)
 
 
 @router.put("/{cliente_id}", response_model=ClienteResponse)
@@ -65,9 +80,14 @@ async def atualizar(
     c.email = body.email
     c.telefone = body.telefone
     c.cpf_cnpj = body.cpf_cnpj
+    c.endereco = body.endereco
+    c.bairro = body.bairro
+    c.cidade = body.cidade
+    c.estado = body.estado
     c.observacoes = body.observacoes
+    c.vendedor_id = str(body.vendedor_id) if body.vendedor_id else None
     await repo.salvar(c)
-    return ClienteResponse(id=UUID(c.id), empresa_id=UUID(c.empresa_id), nome=c.nome, email=c.email, telefone=c.telefone, cpf_cnpj=c.cpf_cnpj, observacoes=c.observacoes, ativo=c.ativo)
+    return _to_response(c)
 
 
 @router.delete("/{cliente_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -70,6 +70,7 @@ async def _orc_to_response(orc: object, repo: OrcamentoRepository) -> OrcamentoR
         observacoes=orc.observacoes, validade_dias=orc.validade_dias,
         endereco=orc.endereco, email=orc.email,
         telefone=orc.telefone, cpf=orc.cpf,
+        campos_extras=orc.campos_extras or {},
         premissas=[_premissa_to_response(p) for p in premissas],
         itens=[_item_to_response(i) for i in itens],
     )
@@ -277,6 +278,7 @@ async def criar_orcamento(
         endereco=body.endereco, email=body.email,
         telefone=body.telefone, cpf=body.cpf,
     )
+    orc.campos_extras = body.campos_extras or {}
 
     subtotal, valor_venda = await _salvar_premissas_e_itens(
         UUID(orc.id), body.custo_base, body.valor_venda,
@@ -325,6 +327,7 @@ async def atualizar_orcamento(
     orc.email = body.email
     orc.telefone = body.telefone
     orc.cpf = body.cpf
+    orc.campos_extras = body.campos_extras or {}
 
     await repo.deletar_premissas(orc_id)
     await repo.deletar_itens(orc_id)
@@ -541,8 +544,10 @@ async def gerar_docx(
 ) -> Response:
     from pathlib import Path
     from sqlalchemy import select
-    from app.identity.infrastructure.orm_models import UsuarioORM
+    from app.identity.infrastructure.orm_models import UsuarioORM, EmpresaORM
     from app.clients.infrastructure.orm_models import ClienteORM
+    from docxtpl import DocxTemplate
+    import io, zipfile
 
     empresa_id = _empresa_id(usuario)
     template_path = Path(f"/app/templates/{empresa_id}.docx")
@@ -557,54 +562,171 @@ async def gerar_docx(
     premissas = await repo.listar_premissas(orc_id)
     itens = await repo.listar_itens(orc_id)
 
-    cliente_nome = ""
-    if orc.cliente_id:
-        cliente = (await db.execute(select(ClienteORM).where(ClienteORM.id == orc.cliente_id))).scalar_one_or_none()
-        if cliente:
-            cliente_nome = cliente.nome
-    vendedor_nome = ""
-    if orc.vendedor_id:
-        vendedor = (await db.execute(select(UsuarioORM).where(UsuarioORM.id == orc.vendedor_id))).scalar_one_or_none()
-        if vendedor:
-            vendedor_nome = vendedor.nome
+    # Dados da empresa
+    empresa = (await db.execute(select(EmpresaORM).where(EmpresaORM.id == str(empresa_id)))).scalar_one_or_none()
+    empresa_nome = empresa.nome if empresa else ""
+    empresa_cnpj = getattr(empresa, 'cnpj', '') or ""
 
-    from docxtpl import DocxTemplate
-    import io
+    # Dados do cliente
+    cliente_nome = cliente_cnpj = cliente_email = cliente_tel = ""
+    cliente_endereco = cliente_bairro = cliente_cidade = cliente_estado = ""
+    if orc.cliente_id:
+        cli = (await db.execute(select(ClienteORM).where(ClienteORM.id == orc.cliente_id))).scalar_one_or_none()
+        if cli:
+            cliente_nome = cli.nome or ""
+            cliente_cnpj = cli.cpf_cnpj or ""
+            cliente_email = cli.email or ""
+            cliente_tel = cli.telefone or ""
+            cliente_endereco = cli.endereco or ""
+            cliente_bairro = getattr(cli, 'bairro', '') or ""
+            cliente_cidade = getattr(cli, 'cidade', '') or ""
+            cliente_estado = getattr(cli, 'estado', '') or ""
+
+    # Dados do vendedor
+    vendedor_nome = vendedor_celular = ""
+    if orc.vendedor_id:
+        vend = (await db.execute(select(UsuarioORM).where(UsuarioORM.id == orc.vendedor_id))).scalar_one_or_none()
+        if vend:
+            vendedor_nome = vend.nome or ""
+
+    # Campos extras (solar e customizados)
+    extras: dict = orc.campos_extras or {}
 
     def _fmt(v: float) -> str:
         return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-    doc = DocxTemplate(str(template_path))
+    def _s(key: str, default: str = "") -> str:
+        return str(extras.get(key, default)) if extras.get(key) is not None else default
+
+    # Contexto completo para {{ }} (docxtpl)
     context = {
+        # Identificação
         "NUMERO": orc.numero,
         "TITULO": orc.titulo,
-        "CLIENTE": cliente_nome,
-        "VENDEDOR": vendedor_nome,
+        "STATUS": orc.status.capitalize(),
         "DATA": orc.criado_em.strftime("%d/%m/%Y") if orc.criado_em else "",
-        "VALIDADE": f"{orc.validade_dias} dias",
+        "VALIDADE": str(orc.validade_dias),
+        # Empresa
+        "EMPRESA": empresa_nome,
+        "EMPRESA_CNPJ": empresa_cnpj,
+        # Cliente
+        "CLIENTE": cliente_nome or orc.email or "",
+        "CLIENTE_CNPJ": cliente_cnpj or orc.cpf or "",
+        "CLIENTE_EMAIL": cliente_email or orc.email or "",
+        "CLIENTE_TELEFONE": cliente_tel or orc.telefone or "",
+        "CLIENTE_ENDERECO": cliente_endereco or orc.endereco or "",
+        "CLIENTE_BAIRRO": cliente_bairro,
+        "CLIENTE_CIDADE": cliente_cidade,
+        "CLIENTE_ESTADO": cliente_estado,
+        # Vendedor
+        "VENDEDOR": vendedor_nome,
+        "VENDEDOR_CELULAR": vendedor_celular,
+        # Compat legado (campos do orçamento)
+        "EMAIL": orc.email or cliente_email,
+        "TELEFONE": orc.telefone or cliente_tel,
+        "ENDERECO": orc.endereco or cliente_endereco,
+        "CPF": orc.cpf or cliente_cnpj,
+        # Financeiro padrão
         "CUSTO_BASE": _fmt(float(orc.custo_base)),
         "SUBTOTAL": _fmt(float(orc.subtotal)),
         "VALOR_VENDA": _fmt(float(orc.valor_venda)),
+        "PRECO": _fmt(float(orc.valor_venda)),
         "OBSERVACOES": orc.observacoes or "",
-        "EMAIL": orc.email or "",
-        "TELEFONE": orc.telefone or "",
-        "ENDERECO": orc.endereco or "",
-        "STATUS": orc.status.capitalize(),
+        # Listas
         "PREMISSAS": [
-            {"NOME": p.nome, "TIPO": p.tipo, "VALOR": f"{float(p.valor):.2f}", "CALCULADO": _fmt(float(p.valor_calculado))}
+            {"NOME": p.nome, "TIPO": p.tipo,
+             "VALOR": f"{float(p.valor):.2f}", "CALCULADO": _fmt(float(p.valor_calculado))}
             for p in premissas
         ],
         "ITENS": [
-            {"DESCRICAO": i.descricao, "QUANTIDADE": f"{float(i.quantidade):.3f}" if i.quantidade else "", "VALOR": _fmt(float(i.valor_calculado))}
+            {"DESCRICAO": i.descricao,
+             "QUANTIDADE": f"{float(i.quantidade):.3f}" if i.quantidade else "",
+             "VALOR": _fmt(float(i.valor_calculado))}
             for i in itens
         ],
+        # Dimensionamento Solar
+        "POTENCIA_SISTEMA": _s("potencia_sistema"),
+        "GERACAO_MENSAL": _s("geracao_mensal"),
+        "CONSUMO_MENSAL": _s("consumo_mensal"),
+        "AREA_UTIL": _s("area_util"),
+        # Módulo
+        "MODULO_FABRICANTE": _s("modulo_fabricante"),
+        "MODULO_MODELO": _s("modulo_modelo"),
+        "MODULO_POTENCIA": _s("modulo_potencia"),
+        "MODULO_QUANTIDADE": _s("modulo_quantidade"),
+        # Inversor
+        "INVERSOR_FABRICANTE": _s("inversor_fabricante"),
+        "INVERSOR_POTENCIA": _s("inversor_potencia"),
+        "INVERSORES_UTILIZADOS": _s("inversores_utilizados"),
+        # Análise financeira
+        "ECONOMIA_MENSAL": _s("economia_mensal"),
+        "ECONOMIA_PERCENTUAL": _s("economia_mensal_p"),
+        "VC_ANUAL_ATUAL": _s("vc_anual_atual"),
+        "VC_ANUAL_NOVO": _s("vc_anual_novo"),
+        "VC_ECONOMIA_ANUAL": _s("vc_economia_anual"),
+        "VC_SERVICO": _s("vc_servico"),
+        "INFLACAO_ENERGETICA": _s("inflacao_energetica"),
+        "PERDA_EFICIENCIA_ANUAL": _s("perda_eficiencia_anual"),
     }
+
+    # Mapeamento [bracket] → valor (compatível com template legado)
+    bracket_map: dict[str, str] = {
+        "[proposta_identificador]": context["NUMERO"],
+        "[cliente_nome]": context["CLIENTE"],
+        "[cliente_cnpj_cpf]": context["CLIENTE_CNPJ"],
+        "[cliente_endereco]": context["CLIENTE_ENDERECO"],
+        "[cliente_bairro]": context["CLIENTE_BAIRRO"],
+        "[cliente_cidade]": context["CLIENTE_CIDADE"],
+        "[cliente_estado]": context["CLIENTE_ESTADO"],
+        "[consumo_mensal]": context["CONSUMO_MENSAL"],
+        "[economia_mensal]": context["ECONOMIA_MENSAL"],
+        "[economia_mensal_p]": context["ECONOMIA_PERCENTUAL"],
+        "[geracao_mensal]": context["GERACAO_MENSAL"],
+        "[potencia_sistema]": context["POTENCIA_SISTEMA"],
+        "[modulo_potencia]": context["MODULO_POTENCIA"],
+        "[modulo_quantidade]": context["MODULO_QUANTIDADE"],
+        "[modulo_modelo]": context["MODULO_MODELO"],
+        "[modulo_fabricante]": context["MODULO_FABRICANTE"],
+        "[area_util]": context["AREA_UTIL"],
+        "[cap_vendedorresp]": context["VENDEDOR"],
+        "[representante_celular]": context["VENDEDOR_CELULAR"],
+        "[inversor_fabricante]": context["INVERSOR_FABRICANTE"],
+        "[inversor_potencia]": context["INVERSOR_POTENCIA"],
+        "[inversores_utilizados]": context["INVERSORES_UTILIZADOS"],
+        "[vc_servico]": context["VC_SERVICO"],
+        "[preco]": context["PRECO"],
+        "[vc_anual_atual]": context["VC_ANUAL_ATUAL"],
+        "[vc_anual_novo]": context["VC_ANUAL_NOVO"],
+        "[vc_economia_anual]": context["VC_ECONOMIA_ANUAL"],
+        "[inflacao_energetica]": context["INFLACAO_ENERGETICA"],
+        "[perda_eficiencia_anual]": context["PERDA_EFICIENCIA_ANUAL"],
+    }
+
+    # Render com docxtpl ({{ }})
+    doc = DocxTemplate(str(template_path))
     doc.render(context)
     buf = io.BytesIO()
     doc.save(buf)
 
+    # Substituição dos [bracket] no XML do DOCX gerado
+    def _replace_brackets(docx_bytes: bytes, replacements: dict[str, str]) -> bytes:
+        inp = io.BytesIO(docx_bytes)
+        out = io.BytesIO()
+        with zipfile.ZipFile(inp) as zin, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                data = zin.read(item.filename)
+                if item.filename.endswith(".xml"):
+                    text = data.decode("utf-8", errors="replace")
+                    for k, v in replacements.items():
+                        text = text.replace(k, v)
+                    data = text.encode("utf-8")
+                zout.writestr(item, data)
+        return out.getvalue()
+
+    final_bytes = _replace_brackets(buf.getvalue(), bracket_map)
+
     return Response(
-        content=buf.getvalue(),
+        content=final_bytes,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="orcamento-{orc.numero}.docx"'},
     )

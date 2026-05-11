@@ -75,6 +75,9 @@ export function OrcamentoEditor() {
   const [vendedorId, setVendedorId] = useState('')
   const [validadeDias, setValidadeDias] = useState(30)
 
+  // Campos extras da proposta (variáveis do template DOCX)
+  const [camposExtras, setCamposExtras] = useState<Record<string, string>>({})
+
   // Dados externos
   const [templates, setTemplates] = useState<PremissaTemplate[]>([])
   const [clientes, setClientes] = useState<any[]>([])
@@ -101,6 +104,7 @@ export function OrcamentoEditor() {
       setVendedorId(orc.vendedor_id || '')
       setValidadeDias(orc.validade_dias || 30)
       setObservacoes(orc.observacoes || '')
+      setCamposExtras(orc.campos_extras || {})
       setPremissasAplicadas((orc.premissas || []).map((p: any) => ({
         _key: crypto.randomUUID(),
         premissa_id: p.premissa_id,
@@ -253,6 +257,7 @@ export function OrcamentoEditor() {
         vendedor_id: vendedorId || undefined,
         validade_dias: validadeDias,
         observacoes: observacoes || undefined,
+        campos_extras: camposExtras,
         premissas: premissasAplicadas.map((p, idx) => ({
           premissa_id: p.premissa_id || undefined,
           nome: p.nome,
@@ -384,6 +389,64 @@ export function OrcamentoEditor() {
               </div>
             </div>
           </div>
+
+          {/* Dados da Proposta / Variáveis do Template DOCX */}
+          {(() => {
+            const setCE = (k: string, v: string) => setCamposExtras(prev => ({ ...prev, [k]: v }))
+            const ce = (k: string) => camposExtras[k] ?? ''
+            const field = (k: string, label: string, unit?: string, type = 'text') => (
+              <div key={k}>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{label}{unit && <span className="text-gray-400 ml-1">({unit})</span>}</label>
+                <input type={type} value={ce(k)} onChange={e => setCE(k, e.target.value)}
+                  className="w-full border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              </div>
+            )
+            return (
+              <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <h2 className="font-semibold text-gray-800 mb-1">Dados da Proposta</h2>
+                <p className="text-xs text-gray-400 mb-4">Variáveis preenchidas no template DOCX (proposta comercial)</p>
+
+                {/* Dimensionamento Solar */}
+                <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-2">Dimensionamento Solar</p>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  {field('potencia_sistema', 'Potência Instalada', 'kWp')}
+                  {field('geracao_mensal', 'Geração Mensal', 'kWh/mês')}
+                  {field('consumo_mensal', 'Consumo Médio Mensal', 'kWh')}
+                  {field('area_util', 'Área Necessária', 'm²')}
+                </div>
+
+                {/* Módulo Solar */}
+                <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-2">Módulo Solar</p>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  {field('modulo_fabricante', 'Fabricante do Módulo')}
+                  {field('modulo_modelo', 'Modelo do Módulo')}
+                  {field('modulo_potencia', 'Potência do Módulo', 'W')}
+                  {field('modulo_quantidade', 'Quantidade de Módulos')}
+                </div>
+
+                {/* Inversor */}
+                <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-2">Inversor</p>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  {field('inversor_fabricante', 'Fabricante do Inversor')}
+                  {field('inversor_potencia', 'Potência do Inversor', 'kW')}
+                  {field('inversores_utilizados', 'Quantidade de Inversores')}
+                </div>
+
+                {/* Análise Financeira */}
+                <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-2">Análise Financeira</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {field('economia_mensal', 'Economia Mensal Esperada', 'R$')}
+                  {field('economia_mensal_p', 'Economia Esperada', '%')}
+                  {field('vc_anual_atual', 'Conta de Luz Anual Atual', 'R$')}
+                  {field('vc_anual_novo', 'Conta de Luz Anual com Solar', 'R$')}
+                  {field('vc_economia_anual', 'Economia Anual', 'R$')}
+                  {field('vc_servico', 'Valor dos Serviços', 'R$')}
+                  {field('inflacao_energetica', 'Taxa de Inflação Energética', '% a.a.')}
+                  {field('perda_eficiencia_anual', 'Perda de Eficiência Anual', '%')}
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Premissas */}
           <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">

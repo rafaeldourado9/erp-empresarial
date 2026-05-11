@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.database import Base
@@ -47,6 +47,7 @@ class OrcamentoORM(Base):
     aprovado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     enviado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     fechado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    campos_extras: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class PremissaOrcamentoORM(Base):

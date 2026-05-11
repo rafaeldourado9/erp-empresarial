@@ -43,14 +43,17 @@ export function Clientes() {
     carregar()
   }
 
-  const empty = { nome: '', email: '', telefone: '', cpf_cnpj: '', endereco: '', vendedor_id: '' }
+  const empty = { nome: '', email: '', telefone: '', cpf_cnpj: '', endereco: '', bairro: '', cidade: '', estado: '', vendedor_id: '' }
 
   const campos = [
     { k: 'nome', label: 'Nome', required: true },
     { k: 'email', label: 'E-mail', type: 'email' },
     { k: 'telefone', label: 'Telefone' },
     { k: 'cpf_cnpj', label: 'CPF / CNPJ' },
-    { k: 'endereco', label: 'Endereço' },
+    { k: 'endereco', label: 'Endereço (rua, número)' },
+    { k: 'bairro', label: 'Bairro' },
+    { k: 'cidade', label: 'Cidade' },
+    { k: 'estado', label: 'Estado (UF)', maxLength: 2 },
   ]
 
   const nomeVendedor = (id: string | null) =>
@@ -105,7 +108,7 @@ export function Clientes() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => setModal({ ...c, vendedor_id: c.vendedor_id ?? '' })}
+                    <button onClick={() => setModal({ ...c, vendedor_id: c.vendedor_id ?? '', bairro: c.bairro ?? '', cidade: c.cidade ?? '', estado: c.estado ?? '', endereco: c.endereco ?? '' })}
                       className="p-1 text-gray-400 hover:text-blue-600">
                       <Pencil className="w-4 h-4" />
                     </button>
@@ -125,10 +128,10 @@ export function Clientes() {
           <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
             <h2 className="font-semibold text-lg mb-4">{modal.id ? 'Editar' : 'Novo'} Cliente</h2>
             <div className="space-y-3">
-              {campos.map(({ k, label, type = 'text', required }) => (
+              {campos.map(({ k, label, type = 'text', required, maxLength }: any) => (
                 <div key={k}>
                   <label className="block text-sm font-medium text-gray-700 mb-1">{label}{required && ' *'}</label>
-                  <input type={type} value={modal[k] ?? ''} required={required}
+                  <input type={type} value={modal[k] ?? ''} required={required} maxLength={maxLength}
                     onChange={e => setModal((m: any) => ({ ...m, [k]: e.target.value }))}
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>

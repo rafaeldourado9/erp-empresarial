@@ -84,6 +84,7 @@ class OrcamentoRequest(BaseModel):
     email: str | None = None
     telefone: str | None = None
     cpf: str | None = None
+    campos_extras: dict = {}
     premissas: list[PremissaOrcamentoRequest] = []
     itens: list[ItemOrcamentoRequest] = []
 
@@ -118,6 +119,7 @@ class OrcamentoResponse(BaseModel):
     email: str | None
     telefone: str | None
     cpf: str | None
+    campos_extras: dict = {}
     premissas: list[PremissaOrcamentoResponse] = []
     itens: list[ItemOrcamentoResponse] = []
 
