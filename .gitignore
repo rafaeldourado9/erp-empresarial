@@ -1,0 +1,42 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.log
+keys/
+!keys/.gitkeep
+
+# Node / Frontend
+node_modules/
+*.tsbuildinfo
+*.d.ts.map
+frontend/dist/
+frontend/build/
+frontend/vite.config.d.ts
+frontend/vite.config.js
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini

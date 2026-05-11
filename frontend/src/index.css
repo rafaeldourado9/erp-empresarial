@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-zinc-200;
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-zinc-50 text-zinc-900 antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-zinc-300 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-zinc-400;
+  }
+}
+
+@layer components {
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-zinc-300
+           transition-all duration-150 hover:text-white hover:bg-white/5 cursor-pointer;
+  }
+
+  .sidebar-link.active {
+    @apply text-white bg-white/10 font-medium;
+  }
+
+  .card {
+    @apply bg-white rounded-xl border border-zinc-200/80 shadow-[0_1px_3px_0_rgb(0_0_0/0.06),0_1px_2px_-1px_rgb(0_0_0/0.06)];
+  }
+
+  .metric-card {
+    @apply card p-5;
+  }
+
+  .page-header {
+    @apply mb-6;
+  }
+
+  .page-title {
+    @apply text-xl font-semibold text-zinc-900 tracking-tight;
+  }
+
+  .page-subtitle {
+    @apply text-sm text-zinc-600 mt-1;
+  }
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* KDS specific */
+.kds-card-urgente {
+  border-color: #EF4444;
+  background-color: #1C0A0A;
+}
+
+.kds-card-alta {
+  border-color: #F59E0B;
+  background-color: #1C1507;
+}
+
+.kds-card-normal {
+  border-color: #3F3F46;
+  background-color: #18181B;
+}
