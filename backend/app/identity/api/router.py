@@ -210,7 +210,7 @@ async def toggle_operador(
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     op.ativo = not op.ativo
     await repo.salvar(op)
-    return UsuarioResponse(id=op.id, nome=op.nome, email=op.email, perfil=op.perfil.value, empresa_id=op.empresa_id, grupo_id=op.grupo_id, ativo=op.ativo, permissoes=[p.value for p in op.permissoes])
+    return UsuarioResponse(id=op.id, nome=op.nome, email=op.email, perfil=op.perfil.value, empresa_id=op.empresa_id, grupo_id=op.grupo_id, ativo=op.ativo, permissoes=op.permissoes if isinstance(op.permissoes, list) else [], comissao_percentual=float(getattr(op, 'comissao_percentual', 0) or 0))
 
 
 class RedefinirSenhaRequest(BaseModel):

@@ -505,6 +505,18 @@ async def gerar_pdf(
 
 # ── DOCX Template ─────────────────────────────────────────────────────────────
 
+@router.get("/orcamentos/template/exemplo")
+async def baixar_template_exemplo(usuario: UsuarioAtualDep) -> Response:
+    """Baixa um template .docx de proposta comercial com todas as variáveis pré-inseridas."""
+    from app.quotes.application.template_docx_service import gerar_template_docx
+    docx_bytes = gerar_template_docx()
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": 'attachment; filename="modelo-proposta-comercial.docx"'},
+    )
+
+
 @router.post("/orcamentos/template", status_code=status.HTTP_204_NO_CONTENT)
 async def upload_template(
     usuario: UsuarioAtualDep,

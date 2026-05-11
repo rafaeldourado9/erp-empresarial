@@ -25,4 +25,5 @@ export const orcamentosApi = {
   },
   urlPdf: (id: string) => `/api/v1/orcamentos/${id}/pdf`,
   urlDocx: (id: string) => `/api/v1/orcamentos/${id}/docx`,
+  urlTemplateExemplo: () => `/api/v1/orcamentos/template/exemplo`,
 }

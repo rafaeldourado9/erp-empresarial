@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, Eye, CheckCircle, XCircle, Send, FileText, Download } from 'lucide-react'
+import { Plus, Eye, CheckCircle, XCircle, Send, FileText, Download, FileDown } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { orcamentosApi } from '../../api/quotes'
 
@@ -68,12 +68,20 @@ export function Orcamentos() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Orçamentos</h1>
         <div className="flex gap-2">
+          <a
+            href={orcamentosApi.urlTemplateExemplo()}
+            download="modelo-proposta-comercial.docx"
+            className="flex items-center gap-2 border border-gray-200 hover:bg-gray-50 text-gray-600 px-3 py-2 rounded-lg text-sm"
+            title="Baixar modelo de proposta comercial (.docx)"
+          >
+            <FileDown className="w-4 h-4" /> Baixar Modelo
+          </a>
           <button
             onClick={() => templateInputRef.current?.click()}
             className="flex items-center gap-2 border border-gray-200 hover:bg-gray-50 text-gray-600 px-3 py-2 rounded-lg text-sm"
-            title="Enviar template DOCX"
+            title="Enviar template DOCX personalizado"
           >
-            <FileText className="w-4 h-4" /> Template
+            <FileText className="w-4 h-4" /> Enviar Template
           </button>
           <input ref={templateInputRef} type="file" accept=".docx" className="hidden" onChange={handleUploadTemplate} />
           <Link
