@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.identity.api.deps import UsuarioAtualDep
 from app.identity.api.schemas import (
-    CriarEmpresaRequest, CriarUsuarioRequest, EmpresaResponse,
+    AtualizarUsuarioRequest, CriarEmpresaRequest, CriarUsuarioRequest, EmpresaResponse,
     LoginRequest, RefreshRequest, RegistroGrupoRequest, RegistroResponse,
     TokenResponse, UsuarioResponse,
 )
@@ -99,6 +99,7 @@ async def me(usuario: UsuarioAtualDep) -> UsuarioResponse:
         grupo_id=usuario.grupo_id,
         ativo=usuario.ativo,
         permissoes=[p.value for p in usuario.permissoes],
+        comissao_percentual=float(getattr(usuario, 'comissao_percentual', 0) or 0),
     )
 
 
@@ -141,7 +142,8 @@ async def listar_operadores(
     return [UsuarioResponse(
         id=u.id, nome=u.nome, email=u.email, perfil=u.perfil.value,
         empresa_id=u.empresa_id, grupo_id=u.grupo_id, ativo=u.ativo,
-        permissoes=[p.value for p in u.permissoes],
+        permissoes=u.permissoes if isinstance(u.permissoes, list) else [],
+        comissao_percentual=float(getattr(u, 'comissao_percentual', 0) or 0),
     ) for u in usuarios]
 
 
@@ -165,14 +167,15 @@ async def criar_operador(
         permissoes=[Permissao(p) for p in body.permissoes],
         empresa_id=body.empresa_id,
     )
+    novo.comissao_percentual = body.comissao_percentual
     await repo.salvar(novo)
-    return UsuarioResponse(id=novo.id, nome=novo.nome, email=novo.email, perfil=novo.perfil.value, empresa_id=novo.empresa_id, grupo_id=novo.grupo_id, ativo=novo.ativo, permissoes=[p.value for p in novo.permissoes])
+    return UsuarioResponse(id=novo.id, nome=novo.nome, email=novo.email, perfil=novo.perfil.value, empresa_id=novo.empresa_id, grupo_id=novo.grupo_id, ativo=novo.ativo, permissoes=[p.value for p in novo.permissoes], comissao_percentual=float(novo.comissao_percentual))
 
 
 @router.put("/operadores/{operador_id}", response_model=UsuarioResponse)
 async def atualizar_operador(
     operador_id: UUID,
-    body: CriarUsuarioRequest,
+    body: AtualizarUsuarioRequest,
     usuario: UsuarioAtualDep,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> UsuarioResponse:
@@ -184,8 +187,13 @@ async def atualizar_operador(
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     op.nome = body.nome
     op.perfil = PerfilUsuario(body.perfil)
+    op.permissoes = [Permissao(p).value for p in body.permissoes]
+    op.comissao_percentual = body.comissao_percentual
+    if body.senha:
+        import bcrypt
+        op.senha_hash = bcrypt.hashpw(body.senha.encode(), bcrypt.gensalt()).decode()
     await repo.salvar(op)
-    return UsuarioResponse(id=op.id, nome=op.nome, email=op.email, perfil=op.perfil.value, empresa_id=op.empresa_id, grupo_id=op.grupo_id, ativo=op.ativo, permissoes=[p.value for p in op.permissoes])
+    return UsuarioResponse(id=op.id, nome=op.nome, email=op.email, perfil=op.perfil.value, empresa_id=op.empresa_id, grupo_id=op.grupo_id, ativo=op.ativo, permissoes=op.permissoes, comissao_percentual=float(op.comissao_percentual))
 
 
 @router.post("/operadores/{operador_id}/toggle", response_model=UsuarioResponse)

@@ -64,10 +64,10 @@ class OrcamentoRepository:
     async def criar(
         self, empresa_id: UUID, criado_por: UUID, titulo: str,
         custo_base: float, subtotal: float, valor_venda: float,
-        cliente_id: UUID | None = None, observacoes: str | None = None,
-        validade_dias: int = 30, endereco: str | None = None,
-        email: str | None = None, telefone: str | None = None,
-        cpf: str | None = None,
+        cliente_id: UUID | None = None, vendedor_id: UUID | None = None,
+        observacoes: str | None = None, validade_dias: int = 30,
+        endereco: str | None = None, email: str | None = None,
+        telefone: str | None = None, cpf: str | None = None,
     ) -> OrcamentoORM:
         agora = datetime.now(UTC)
         orm = OrcamentoORM(
@@ -76,6 +76,7 @@ class OrcamentoRepository:
             titulo=titulo, custo_base=custo_base, subtotal=subtotal,
             valor_venda=valor_venda, status="rascunho",
             cliente_id=str(cliente_id) if cliente_id else None,
+            vendedor_id=str(vendedor_id) if vendedor_id else None,
             observacoes=observacoes, validade_dias=validade_dias,
             endereco=endereco, email=email, telefone=telefone, cpf=cpf,
             criado_em=agora, atualizado_em=agora,

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Plus, Trash2, Calculator, ArrowLeft, ChevronDown } from 'lucide-react'
 import { orcamentosApi, premissasApi } from '../../api/quotes'
 import { clientesApi } from '../../api/clients'
+import { operadoresApi } from '../../api/operators'
 
 const fmt = (v: number) =>
   `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -70,9 +71,14 @@ export function OrcamentoEditor() {
   const [calculado, setCalculado] = useState<Calculado | null>(null)
   const [pvFormula, setPvFormula] = useState<number | null>(null)  // PV sem override
 
+  // Dados extras
+  const [vendedorId, setVendedorId] = useState('')
+  const [validadeDias, setValidadeDias] = useState(30)
+
   // Dados externos
   const [templates, setTemplates] = useState<PremissaTemplate[]>([])
   const [clientes, setClientes] = useState<any[]>([])
+  const [vendedores, setVendedores] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
   // ── Inicialização ───────────────────────────────────────────────────────────
@@ -80,6 +86,9 @@ export function OrcamentoEditor() {
   useEffect(() => {
     premissasApi.listar().then(setTemplates).catch(() => {})
     clientesApi.listar().then(setClientes).catch(() => {})
+    operadoresApi.listar().then((ops: any[]) =>
+      setVendedores(ops.filter(o => o.perfil?.toLowerCase() === 'vendedor' && o.ativo))
+    ).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -89,6 +98,8 @@ export function OrcamentoEditor() {
       setCustoBase(orc.custo_base)
       // Não pré-populamos o campo manual — deixamos a fórmula recalcular
       setClienteId(orc.cliente_id || '')
+      setVendedorId(orc.vendedor_id || '')
+      setValidadeDias(orc.validade_dias || 30)
       setObservacoes(orc.observacoes || '')
       setPremissasAplicadas((orc.premissas || []).map((p: any) => ({
         _key: crypto.randomUUID(),
@@ -156,27 +167,35 @@ export function OrcamentoEditor() {
 
   // ── Gerenciar premissas ─────────────────────────────────────────────────────
 
+  // IDs de templates já usados no orçamento
+  const premissasIdsUsados = new Set(
+    premissasAplicadas.filter(p => p.premissa_id).map(p => p.premissa_id!)
+  )
+
   const adicionarPremissa = (template?: PremissaTemplate) => {
-    const t = template ?? templates[0]
-    if (!t && !template) {
-      // premissa customizada
+    if (template) {
+      // Bloquear duplicata
+      if (premissasIdsUsados.has(template.id)) {
+        alert('Esta premissa já foi adicionada ao orçamento.')
+        return
+      }
       setPremissasAplicadas(prev => [...prev, {
         _key: crypto.randomUUID(),
-        nome: 'Nova premissa',
-        tipo: 'percentual',
-        valor: 0,
+        premissa_id: template.id,
+        nome: template.nome,
+        descricao: template.descricao,
+        tipo: template.tipo,
+        valor: template.valor,
         ordem: prev.length,
       }])
       return
     }
-    if (!t) return
+    // Premissa customizada (sem template)
     setPremissasAplicadas(prev => [...prev, {
       _key: crypto.randomUUID(),
-      premissa_id: t.id,
-      nome: t.nome,
-      descricao: t.descricao,
-      tipo: t.tipo,
-      valor: t.valor,
+      nome: 'Nova premissa',
+      tipo: 'percentual',
+      valor: 0,
       ordem: prev.length,
     }])
   }
@@ -231,6 +250,8 @@ export function OrcamentoEditor() {
         custo_base: Number(custoBase),
         valor_venda: valorVendaManual ? Number(valorVendaManual) : undefined,
         cliente_id: clienteId || undefined,
+        vendedor_id: vendedorId || undefined,
+        validade_dias: validadeDias,
         observacoes: observacoes || undefined,
         premissas: premissasAplicadas.map((p, idx) => ({
           premissa_id: p.premissa_id || undefined,
@@ -342,10 +363,19 @@ export function OrcamentoEditor() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Validade (dias)</label>
-                  <input type="number" defaultValue={30} min={1}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Vendedor</label>
+                  <select value={vendedorId} onChange={e => setVendedorId(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Sem vendedor</option>
+                    {vendedores.map((v: any) => <option key={v.id} value={v.id}>{v.nome}</option>)}
+                  </select>
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Validade (dias)</label>
+                <input type="number" value={validadeDias} min={1}
+                  onChange={e => setValidadeDias(+e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
@@ -368,14 +398,22 @@ export function OrcamentoEditor() {
                     <button className="text-xs bg-purple-50 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-100 flex items-center gap-1">
                       <Plus className="w-3 h-3" /> Da lista <ChevronDown className="w-3 h-3" />
                     </button>
-                    <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10 hidden group-hover:block">
-                      {templates.map(t => (
-                        <button key={t.id} onClick={() => adicionarPremissa(t)}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex justify-between items-center">
-                          <span>{t.nome}</span>
-                          <span className="text-gray-400 text-xs">{t.valor}{t.tipo === 'percentual' ? '%' : ' R$'}</span>
-                        </button>
-                      ))}
+                    <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-lg z-10 hidden group-hover:block">
+                      {templates.map(t => {
+                        const usado = premissasIdsUsados.has(t.id)
+                        return (
+                          <button key={t.id} onClick={() => adicionarPremissa(t)}
+                            disabled={usado}
+                            className={`w-full text-left px-3 py-2 text-sm flex justify-between items-center ${
+                              usado ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-50'
+                            }`}>
+                            <span>{t.nome}</span>
+                            <span className="text-gray-400 text-xs">
+                              {usado ? '✓' : `${t.valor}${t.tipo === 'percentual' ? '%' : ' R$'}`}
+                            </span>
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                 )}

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Plus, Pencil, Trash2, Search, Phone, Mail } from 'lucide-react'
 import { clientesApi } from '../../api/clients'
+import { operadoresApi } from '../../api/operators'
 
 export function Clientes() {
   const [clientes, setClientes] = useState<any[]>([])
+  const [vendedores, setVendedores] = useState<any[]>([])
   const [busca, setBusca] = useState('')
   const [modal, setModal] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -13,16 +15,26 @@ export function Clientes() {
     clientesApi.listar(busca || undefined).then(setClientes).finally(() => setLoading(false))
   }
 
+  useEffect(() => {
+    operadoresApi.listar().then(ops =>
+      setVendedores(ops.filter((o: any) => o.perfil?.toUpperCase() === 'VENDEDOR' && o.ativo))
+    )
+  }, [])
+
   useEffect(() => { carregar() }, [busca])
 
   const salvar = async () => {
-    if (modal.id) {
-      await clientesApi.atualizar(modal.id, modal)
-    } else {
-      await clientesApi.criar(modal)
+    try {
+      if (modal.id) {
+        await clientesApi.atualizar(modal.id, modal)
+      } else {
+        await clientesApi.criar(modal)
+      }
+      setModal(null)
+      carregar()
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Erro ao salvar')
     }
-    setModal(null)
-    carregar()
   }
 
   const deletar = async (id: string) => {
@@ -31,7 +43,7 @@ export function Clientes() {
     carregar()
   }
 
-  const empty = { nome: '', email: '', telefone: '', cpf_cnpj: '', endereco: '' }
+  const empty = { nome: '', email: '', telefone: '', cpf_cnpj: '', endereco: '', vendedor_id: '' }
 
   const campos = [
     { k: 'nome', label: 'Nome', required: true },
@@ -40,6 +52,9 @@ export function Clientes() {
     { k: 'cpf_cnpj', label: 'CPF / CNPJ' },
     { k: 'endereco', label: 'Endereço' },
   ]
+
+  const nomeVendedor = (id: string | null) =>
+    vendedores.find(v => v.id === id)?.nome ?? '—'
 
   return (
     <div className="p-6">
@@ -64,7 +79,7 @@ export function Clientes() {
               <th className="text-left px-4 py-3 font-medium text-gray-600">Nome</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Contato</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">CPF / CNPJ</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Endereço</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Vendedor</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Ações</th>
             </tr>
           </thead>
@@ -81,10 +96,17 @@ export function Clientes() {
                   </div>
                 </td>
                 <td className="px-4 py-3 text-gray-600">{c.cpf_cnpj || '—'}</td>
-                <td className="px-4 py-3 text-gray-600 max-w-xs truncate">{c.endereco || '—'}</td>
+                <td className="px-4 py-3 text-gray-600">
+                  {c.vendedor_id ? (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                      {nomeVendedor(c.vendedor_id)}
+                    </span>
+                  ) : '—'}
+                </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => setModal({ ...c })} className="p-1 text-gray-400 hover:text-blue-600">
+                    <button onClick={() => setModal({ ...c, vendedor_id: c.vendedor_id ?? '' })}
+                      className="p-1 text-gray-400 hover:text-blue-600">
                       <Pencil className="w-4 h-4" />
                     </button>
                     <button onClick={() => deletar(c.id)} className="p-1 text-gray-400 hover:text-red-600">
@@ -111,6 +133,21 @@ export function Clientes() {
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               ))}
+              {vendedores.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Vendedor responsável</label>
+                  <select
+                    value={modal.vendedor_id ?? ''}
+                    onChange={e => setModal((m: any) => ({ ...m, vendedor_id: e.target.value || null }))}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Sem vendedor</option>
+                    {vendedores.map(v => (
+                      <option key={v.id} value={v.id}>{v.nome}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
             <div className="flex gap-2 mt-4">
               <button onClick={() => setModal(null)} className="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>

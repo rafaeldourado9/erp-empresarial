@@ -18,6 +18,7 @@ class ClienteORM(Base):
     telefone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     cpf_cnpj: Mapped[str | None] = mapped_column(String(20), nullable=True)
     endereco: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    vendedor_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("usuarios.id"), nullable=True)
     observacoes: Mapped[str | None] = mapped_column(Text, nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

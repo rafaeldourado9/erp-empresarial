@@ -13,6 +13,33 @@ const perfilLabel: Record<string, string> = {
   FINANCEIRO: 'Financeiro',
 }
 
+const TODAS_PERMISSOES = [
+  { value: 'ver_dashboard', label: 'Ver Dashboard' },
+  { value: 'ver_estoque', label: 'Ver Estoque' },
+  { value: 'editar_estoque', label: 'Editar Estoque' },
+  { value: 'ver_orcamentos', label: 'Ver Orçamentos' },
+  { value: 'criar_orcamentos', label: 'Criar Orçamentos' },
+  { value: 'aprovar_orcamentos', label: 'Aprovar Orçamentos' },
+  { value: 'ver_clientes', label: 'Ver Clientes' },
+  { value: 'editar_clientes', label: 'Editar Clientes' },
+  { value: 'ver_financeiro', label: 'Ver Financeiro' },
+  { value: 'lancar_financeiro', label: 'Lançar Financeiro' },
+  { value: 'ver_comissoes', label: 'Ver Comissões' },
+  { value: 'ver_auditoria', label: 'Ver Auditoria' },
+  { value: 'usar_caixa', label: 'Usar Caixa' },
+  { value: 'gerenciar_usuarios', label: 'Gerenciar Usuários' },
+  { value: 'gerenciar_premissas', label: 'Gerenciar Premissas' },
+  { value: 'configurar_sistema', label: 'Configurar Sistema' },
+]
+
+const PERMISSOES_POR_PERFIL: Record<string, string[]> = {
+  VENDEDOR: ['ver_dashboard', 'ver_orcamentos', 'criar_orcamentos', 'ver_clientes', 'editar_clientes', 'ver_comissoes'],
+  OPERADOR: ['ver_dashboard', 'ver_orcamentos', 'criar_orcamentos', 'ver_clientes', 'ver_estoque'],
+  CAIXA: ['ver_dashboard', 'usar_caixa', 'ver_clientes'],
+  FINANCEIRO: ['ver_dashboard', 'ver_financeiro', 'lancar_financeiro', 'ver_comissoes'],
+  ADMIN_EMPRESA: TODAS_PERMISSOES.map(p => p.value),
+}
+
 export function Operadores() {
   const [operadores, setOperadores] = useState<any[]>([])
   const [modal, setModal] = useState<any>(null)
@@ -27,14 +54,49 @@ export function Operadores() {
 
   useEffect(() => { carregar() }, [])
 
+  const togglePermissao = (perm: string) => {
+    setModal((m: any) => {
+      const perms: string[] = m.permissoes ?? []
+      return {
+        ...m,
+        permissoes: perms.includes(perm) ? perms.filter((p: string) => p !== perm) : [...perms, perm],
+      }
+    })
+  }
+
+  const aplicarPerfil = (perfil: string) => {
+    setModal((m: any) => ({
+      ...m,
+      perfil,
+      permissoes: PERMISSOES_POR_PERFIL[perfil] ?? [],
+    }))
+  }
+
   const salvar = async () => {
-    if (modal.id) {
-      await operadoresApi.atualizar(modal.id, { nome: modal.nome, perfil: modal.perfil })
-    } else {
-      await operadoresApi.criar(modal)
+    try {
+      if (modal.id) {
+        await operadoresApi.atualizar(modal.id, {
+          nome: modal.nome,
+          perfil: modal.perfil,
+          permissoes: modal.permissoes ?? [],
+          comissao_percentual: modal.comissao_percentual ?? 0,
+          senha: modal.senha || undefined,
+        })
+      } else {
+        await operadoresApi.criar({
+          nome: modal.nome,
+          email: modal.email,
+          senha: modal.senha,
+          perfil: modal.perfil,
+          permissoes: modal.permissoes ?? [],
+          comissao_percentual: modal.comissao_percentual ?? 0,
+        })
+      }
+      setModal(null)
+      carregar()
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Erro ao salvar')
     }
-    setModal(null)
-    carregar()
   }
 
   const toggleAtivo = async (id: string) => {
@@ -49,7 +111,7 @@ export function Operadores() {
     setNovaSenha('')
   }
 
-  const empty = { nome: '', email: '', perfil: 'OPERADOR', senha: '' }
+  const empty = { nome: '', email: '', perfil: 'OPERADOR', senha: '', permissoes: PERMISSOES_POR_PERFIL['OPERADOR'], comissao_percentual: 0 }
 
   return (
     <div className="p-6">
@@ -68,21 +130,25 @@ export function Operadores() {
               <th className="text-left px-4 py-3 font-medium text-gray-600">Nome</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">E-mail</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Perfil</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Comissão</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {loading && <tr><td colSpan={5} className="text-center py-8 text-gray-400">Carregando...</td></tr>}
-            {!loading && operadores.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-gray-400">Nenhum operador cadastrado</td></tr>}
+            {loading && <tr><td colSpan={6} className="text-center py-8 text-gray-400">Carregando...</td></tr>}
+            {!loading && operadores.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-gray-400">Nenhum operador cadastrado</td></tr>}
             {operadores.map(op => (
               <tr key={op.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3 font-medium text-gray-800">{op.nome}</td>
                 <td className="px-4 py-3 text-gray-600">{op.email}</td>
                 <td className="px-4 py-3">
                   <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                    {perfilLabel[op.perfil] ?? op.perfil}
+                    {perfilLabel[op.perfil?.toUpperCase()] ?? op.perfil}
                   </span>
+                </td>
+                <td className="px-4 py-3 text-gray-600">
+                  {op.comissao_percentual > 0 ? `${op.comissao_percentual}%` : '—'}
                 </td>
                 <td className="px-4 py-3">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${op.ativo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
@@ -91,7 +157,7 @@ export function Operadores() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => setModal({ ...op })} title="Editar"
+                    <button onClick={() => setModal({ ...op, permissoes: op.permissoes ?? [], senha: '' })} title="Editar"
                       className="p-1 text-gray-400 hover:text-blue-600">
                       <Pencil className="w-4 h-4" />
                     </button>
@@ -112,8 +178,8 @@ export function Operadores() {
       </div>
 
       {modal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto py-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-xl mx-4">
             <h2 className="font-semibold text-lg mb-4">{modal.id ? 'Editar' : 'Novo'} Operador</h2>
             <div className="space-y-3">
               <div>
@@ -135,12 +201,42 @@ export function Operadores() {
                   </div>
                 </>
               )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Perfil</label>
+                  <select value={modal.perfil}
+                    onChange={e => aplicarPerfil(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    {PERFIS.map(p => <option key={p} value={p}>{perfilLabel[p]}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">% Comissão</label>
+                  <input type="number" min={0} max={100} step={0.01}
+                    value={modal.comissao_percentual ?? 0}
+                    onChange={e => setModal((m: any) => ({ ...m, comissao_percentual: +e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Perfil</label>
-                <select value={modal.perfil} onChange={e => setModal((m: any) => ({ ...m, perfil: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  {PERFIS.map(p => <option key={p} value={p}>{perfilLabel[p]}</option>)}
-                </select>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Permissões</label>
+                <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto border rounded-lg p-3">
+                  {TODAS_PERMISSOES.map(perm => (
+                    <label key={perm.value} className="flex items-center gap-2 cursor-pointer text-sm">
+                      <input
+                        type="checkbox"
+                        checked={(modal.permissoes ?? []).includes(perm.value)}
+                        onChange={() => togglePermissao(perm.value)}
+                        className="rounded"
+                      />
+                      <span className="text-gray-700">{perm.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  {(modal.permissoes ?? []).length} permissão(ões) selecionada(s)
+                </p>
               </div>
             </div>
             <div className="flex gap-2 mt-4">

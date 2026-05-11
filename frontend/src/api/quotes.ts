@@ -14,7 +14,15 @@ export const orcamentosApi = {
   atualizar: (id: string, data: object) => api.put(`/orcamentos/${id}`, data).then(r => r.data),
   deletar: (id: string) => api.delete(`/orcamentos/${id}`),
   calcular: (data: object) => api.post('/orcamentos/calcular', data).then(r => r.data),
+  enviar: (id: string) => api.patch(`/orcamentos/${id}/enviar`).then(r => r.data),
   aprovar: (id: string) => api.patch(`/orcamentos/${id}/aprovar`).then(r => r.data),
   reprovar: (id: string) => api.patch(`/orcamentos/${id}/reprovar`).then(r => r.data),
   fechar: (id: string, data: object) => api.patch(`/orcamentos/${id}/fechar`, data).then(r => r.data),
+  uploadTemplate: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/orcamentos/template', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  urlPdf: (id: string) => `/api/v1/orcamentos/${id}/pdf`,
+  urlDocx: (id: string) => `/api/v1/orcamentos/${id}/docx`,
 }

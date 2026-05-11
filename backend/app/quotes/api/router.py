@@ -4,7 +4,8 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.identity.api.deps import UsuarioAtualDep
@@ -60,9 +61,12 @@ async def _orc_to_response(orc: object, repo: OrcamentoRepository) -> OrcamentoR
         subtotal=float(orc.subtotal), valor_venda=float(orc.valor_venda),
         status=orc.status,
         cliente_id=UUID(orc.cliente_id) if orc.cliente_id else None,
+        vendedor_id=UUID(orc.vendedor_id) if orc.vendedor_id else None,
         criado_por=UUID(orc.criado_por), criado_em=orc.criado_em,
         atualizado_em=orc.atualizado_em,
-        aprovado_em=orc.aprovado_em, fechado_em=orc.fechado_em,
+        aprovado_em=orc.aprovado_em,
+        enviado_em=orc.enviado_em,
+        fechado_em=orc.fechado_em,
         observacoes=orc.observacoes, validade_dias=orc.validade_dias,
         endereco=orc.endereco, email=orc.email,
         telefone=orc.telefone, cpf=orc.cpf,
@@ -76,7 +80,6 @@ async def _resolver_premissa(
     premissa_repo: PremissaRepository,
     empresa_id: UUID,
 ) -> tuple[UUID | None, str, str | None, str, float]:
-    """Retorna (premissa_id, nome, descricao, tipo, valor) resolvendo o template se necessário."""
     if req.premissa_id:
         template = await premissa_repo.buscar_por_id(req.premissa_id, empresa_id)
         if template is None:
@@ -96,7 +99,18 @@ async def _salvar_premissas_e_itens(
     premissa_repo: PremissaRepository,
     empresa_id: UUID,
 ) -> tuple[float, float]:
-    """Persiste premissas e itens, retorna (subtotal, valor_venda_final)."""
+    # Bloquear premissas duplicadas pelo premissa_id
+    ids_usados: set[str] = set()
+    for p_req in premissas_req:
+        if p_req.premissa_id:
+            pid_str = str(p_req.premissa_id)
+            if pid_str in ids_usados:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    detail=f"Premissa duplicada: cada premissa só pode ser usada uma vez no orçamento",
+                )
+            ids_usados.add(pid_str)
+
     premissas_calc: list[PremissaCalculo] = []
     premissas_resolvidas = []
     for idx, p_req in enumerate(premissas_req):
@@ -258,8 +272,8 @@ async def criar_orcamento(
     orc = await repo.criar(
         empresa_id=empresa_id, criado_por=usuario.id, titulo=body.titulo,
         custo_base=body.custo_base, subtotal=0, valor_venda=0,
-        cliente_id=body.cliente_id, observacoes=body.observacoes,
-        validade_dias=body.validade_dias,
+        cliente_id=body.cliente_id, vendedor_id=body.vendedor_id,
+        observacoes=body.observacoes, validade_dias=body.validade_dias,
         endereco=body.endereco, email=body.email,
         telefone=body.telefone, cpf=body.cpf,
     )
@@ -304,6 +318,7 @@ async def atualizar_orcamento(
     orc.titulo = body.titulo
     orc.custo_base = body.custo_base
     orc.cliente_id = str(body.cliente_id) if body.cliente_id else None
+    orc.vendedor_id = str(body.vendedor_id) if body.vendedor_id else None
     orc.observacoes = body.observacoes
     orc.validade_dias = body.validade_dias
     orc.endereco = body.endereco
@@ -340,6 +355,24 @@ async def deletar_orcamento(
 
 # ── Status ────────────────────────────────────────────────────────────────────
 
+@router.patch("/orcamentos/{orc_id}/enviar", response_model=OrcamentoResponse)
+async def enviar_orcamento(
+    orc_id: UUID,
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> OrcamentoResponse:
+    repo = OrcamentoRepository(db)
+    orc = await repo.buscar_por_id(orc_id, _empresa_id(usuario))
+    if orc is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Orçamento não encontrado")
+    if orc.status not in ("rascunho",):
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="Somente rascunhos podem ser enviados")
+    orc.status = "enviado"
+    orc.enviado_em = datetime.now(UTC)
+    await repo.salvar(orc)
+    return await _orc_to_response(orc, repo)
+
+
 @router.patch("/orcamentos/{orc_id}/fechar", response_model=OrcamentoResponse)
 async def fechar_orcamento(
     orc_id: UUID,
@@ -374,6 +407,35 @@ async def aprovar_orcamento(
     orc.status = "aprovado"
     orc.aprovado_em = datetime.now(UTC)
     await repo.salvar(orc)
+
+    # Auto-criar comissão se houver vendedor atribuído
+    if orc.vendedor_id:
+        from sqlalchemy import select
+        from app.identity.infrastructure.orm_models import UsuarioORM
+        from app.commissions.infrastructure.orm_models import ComissaoORM
+        from uuid import uuid4
+        vendedor = (await db.execute(
+            select(UsuarioORM).where(UsuarioORM.id == orc.vendedor_id)
+        )).scalar_one_or_none()
+        if vendedor and float(getattr(vendedor, 'comissao_percentual', 0) or 0) > 0:
+            percentual = float(vendedor.comissao_percentual)
+            valor_comissao = float(orc.valor_venda) * percentual / 100
+            comissao = ComissaoORM(
+                id=str(uuid4()),
+                empresa_id=orc.empresa_id,
+                orcamento_id=orc.id,
+                orcamento_numero=orc.numero,
+                vendedor_id=orc.vendedor_id,
+                vendedor_nome=vendedor.nome,
+                valor_venda=float(orc.valor_venda),
+                percentual=percentual,
+                valor_comissao=valor_comissao,
+                status="pendente",
+                criado_em=datetime.now(UTC),
+            )
+            db.add(comissao)
+            await db.flush()
+
     return await _orc_to_response(orc, repo)
 
 
@@ -392,6 +454,150 @@ async def reprovar_orcamento(
     return await _orc_to_response(orc, repo)
 
 
+# ── PDF ───────────────────────────────────────────────────────────────────────
+
+@router.get("/orcamentos/{orc_id}/pdf")
+async def gerar_pdf(
+    orc_id: UUID,
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    from sqlalchemy import select
+    from app.identity.infrastructure.orm_models import UsuarioORM
+    from app.clients.infrastructure.orm_models import ClienteORM
+    from app.quotes.application.pdf_service import gerar_pdf_orcamento
+    from app.identity.infrastructure.orm_models import EmpresaORM
+
+    empresa_id = _empresa_id(usuario)
+    repo = OrcamentoRepository(db)
+    orc = await repo.buscar_por_id(orc_id, empresa_id)
+    if orc is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Orçamento não encontrado")
+
+    premissas = await repo.listar_premissas(orc_id)
+    itens = await repo.listar_itens(orc_id)
+
+    empresa = (await db.execute(select(EmpresaORM).where(EmpresaORM.id == str(empresa_id)))).scalar_one_or_none()
+    cliente_nome = ""
+    if orc.cliente_id:
+        cliente = (await db.execute(select(ClienteORM).where(ClienteORM.id == orc.cliente_id))).scalar_one_or_none()
+        if cliente:
+            cliente_nome = cliente.nome
+    vendedor_nome = ""
+    if orc.vendedor_id:
+        vendedor = (await db.execute(select(UsuarioORM).where(UsuarioORM.id == orc.vendedor_id))).scalar_one_or_none()
+        if vendedor:
+            vendedor_nome = vendedor.nome
+
+    pdf_bytes = gerar_pdf_orcamento(
+        orc=orc, premissas=premissas, itens=itens,
+        empresa_nome=empresa.nome if empresa else "",
+        cliente_nome=cliente_nome,
+        vendedor_nome=vendedor_nome,
+    )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="orcamento-{orc.numero}.pdf"'},
+    )
+
+
+# ── DOCX Template ─────────────────────────────────────────────────────────────
+
+@router.post("/orcamentos/template", status_code=status.HTTP_204_NO_CONTENT)
+async def upload_template(
+    usuario: UsuarioAtualDep,
+    file: UploadFile = File(...),
+) -> None:
+    """Salva um template .docx para a empresa. Variáveis: {{NUMERO}}, {{TITULO}}, {{CLIENTE}},
+    {{VENDEDOR}}, {{DATA}}, {{VALIDADE}}, {{CUSTO_BASE}}, {{VALOR_VENDA}}, {{OBSERVACOES}},
+    {{PREMISSAS_TABELA}} (lista de premissas), {{ITENS_TABELA}} (lista de itens)."""
+    from pathlib import Path
+    empresa_id = _empresa_id(usuario)
+    templates_dir = Path("/app/templates")
+    templates_dir.mkdir(parents=True, exist_ok=True)
+    content = await file.read()
+    (templates_dir / f"{empresa_id}.docx").write_bytes(content)
+
+
+@router.get("/orcamentos/{orc_id}/docx")
+async def gerar_docx(
+    orc_id: UUID,
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    from pathlib import Path
+    from sqlalchemy import select
+    from app.identity.infrastructure.orm_models import UsuarioORM
+    from app.clients.infrastructure.orm_models import ClienteORM
+
+    empresa_id = _empresa_id(usuario)
+    template_path = Path(f"/app/templates/{empresa_id}.docx")
+    if not template_path.exists():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Nenhum template encontrado. Faça upload de um arquivo .docx primeiro.")
+
+    repo = OrcamentoRepository(db)
+    orc = await repo.buscar_por_id(orc_id, empresa_id)
+    if orc is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Orçamento não encontrado")
+
+    premissas = await repo.listar_premissas(orc_id)
+    itens = await repo.listar_itens(orc_id)
+
+    cliente_nome = ""
+    if orc.cliente_id:
+        cliente = (await db.execute(select(ClienteORM).where(ClienteORM.id == orc.cliente_id))).scalar_one_or_none()
+        if cliente:
+            cliente_nome = cliente.nome
+    vendedor_nome = ""
+    if orc.vendedor_id:
+        vendedor = (await db.execute(select(UsuarioORM).where(UsuarioORM.id == orc.vendedor_id))).scalar_one_or_none()
+        if vendedor:
+            vendedor_nome = vendedor.nome
+
+    from docxtpl import DocxTemplate
+    import io
+
+    def _fmt(v: float) -> str:
+        return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    doc = DocxTemplate(str(template_path))
+    context = {
+        "NUMERO": orc.numero,
+        "TITULO": orc.titulo,
+        "CLIENTE": cliente_nome,
+        "VENDEDOR": vendedor_nome,
+        "DATA": orc.criado_em.strftime("%d/%m/%Y") if orc.criado_em else "",
+        "VALIDADE": f"{orc.validade_dias} dias",
+        "CUSTO_BASE": _fmt(float(orc.custo_base)),
+        "SUBTOTAL": _fmt(float(orc.subtotal)),
+        "VALOR_VENDA": _fmt(float(orc.valor_venda)),
+        "OBSERVACOES": orc.observacoes or "",
+        "EMAIL": orc.email or "",
+        "TELEFONE": orc.telefone or "",
+        "ENDERECO": orc.endereco or "",
+        "STATUS": orc.status.capitalize(),
+        "PREMISSAS": [
+            {"NOME": p.nome, "TIPO": p.tipo, "VALOR": f"{float(p.valor):.2f}", "CALCULADO": _fmt(float(p.valor_calculado))}
+            for p in premissas
+        ],
+        "ITENS": [
+            {"DESCRICAO": i.descricao, "QUANTIDADE": f"{float(i.quantidade):.3f}" if i.quantidade else "", "VALOR": _fmt(float(i.valor_calculado))}
+            for i in itens
+        ],
+    }
+    doc.render(context)
+    buf = io.BytesIO()
+    doc.save(buf)
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="orcamento-{orc.numero}.docx"'},
+    )
+
+
 # ── Gerenciar premissas/itens individualmente ─────────────────────────────────
 
 @router.post("/orcamentos/{orc_id}/premissas", response_model=PremissaOrcamentoResponse, status_code=status.HTTP_201_CREATED)
@@ -406,6 +612,16 @@ async def adicionar_premissa(
     orc = await repo.buscar_por_id(orc_id, empresa_id)
     if orc is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Orçamento não encontrado")
+
+    # Bloquear premissa duplicada
+    if body.premissa_id:
+        existentes = await repo.listar_premissas(orc_id)
+        ids_existentes = {p.premissa_id for p in existentes if p.premissa_id}
+        if str(body.premissa_id) in ids_existentes:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail="Esta premissa já foi adicionada ao orçamento",
+            )
 
     pid, nome, desc, tipo, valor = await _resolver_premissa(body, PremissaRepository(db), empresa_id)
     from app.quotes.application.calculator import PremissaCalculo, calcular

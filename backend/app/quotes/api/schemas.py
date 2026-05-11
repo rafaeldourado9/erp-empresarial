@@ -77,6 +77,7 @@ class OrcamentoRequest(BaseModel):
     custo_base: float
     valor_venda: float | None = None
     cliente_id: UUID | None = None
+    vendedor_id: UUID | None = None
     observacoes: str | None = None
     validade_dias: int = 30
     endereco: str | None = None
@@ -104,10 +105,12 @@ class OrcamentoResponse(BaseModel):
     valor_venda: float
     status: str
     cliente_id: UUID | None
+    vendedor_id: UUID | None
     criado_por: UUID
     criado_em: datetime
     atualizado_em: datetime
     aprovado_em: datetime | None
+    enviado_em: datetime | None
     fechado_em: datetime | None
     observacoes: str | None
     validade_dias: int

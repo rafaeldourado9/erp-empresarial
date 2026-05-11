@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.database import Base
@@ -47,5 +47,6 @@ class UsuarioORM(Base):
     senha_hash: Mapped[str] = mapped_column(Text, nullable=False)
     perfil: Mapped[str] = mapped_column(String(50), nullable=False)
     permissoes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    comissao_percentual: Mapped[float] = mapped_column(Numeric(8, 4), nullable=False, default=0)
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

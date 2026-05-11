@@ -45,6 +45,7 @@ class UsuarioResponse(BaseModel):
     grupo_id: UUID
     ativo: bool
     permissoes: list[str]
+    comissao_percentual: float = 0
 
 
 class CriarUsuarioRequest(BaseModel):
@@ -54,6 +55,15 @@ class CriarUsuarioRequest(BaseModel):
     perfil: str
     empresa_id: UUID | None = None
     permissoes: list[str] = []
+    comissao_percentual: float = 0
+
+
+class AtualizarUsuarioRequest(BaseModel):
+    nome: str
+    perfil: str
+    permissoes: list[str] = []
+    comissao_percentual: float = 0
+    senha: str | None = None
 
 
 class EmpresaResponse(BaseModel):
