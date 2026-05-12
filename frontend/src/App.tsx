@@ -12,6 +12,7 @@ import { Comissoes } from './pages/admin/Comissoes'
 import { Prospeccao } from './pages/admin/Prospeccao'
 import { Caixa } from './pages/admin/Caixa'
 import { Operadores } from './pages/admin/Operadores'
+import { Vendedores } from './pages/admin/Vendedores'
 import { Auditoria } from './pages/admin/Auditoria'
 import { Configuracoes } from './pages/admin/Configuracoes'
 
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="/orcamentos/novo" element={<OrcamentoEditor />} />
           <Route path="/orcamentos/:id" element={<OrcamentoEditor />} />
           <Route path="/clientes" element={<Clientes />} />
+          <Route path="/vendedores" element={<Vendedores />} />
           <Route path="/financeiro" element={<Financeiro />} />
           <Route path="/comissoes" element={<Comissoes />} />
           <Route path="/prospeccao" element={<Prospeccao />} />

@@ -26,7 +26,7 @@ interface ItemOS {
 
 // ── Aba: Nova OS ──────────────────────────────────────────────────────────────
 
-function NovaOSForm({ sessaoId, produtos, onCriada }: {
+function NovaOSForm({ sessaoId: _sessaoId, produtos, onCriada }: {
   sessaoId: string
   produtos: Produto[]
   onCriada: () => void
