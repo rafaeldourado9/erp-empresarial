@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, TrendingUp, TrendingDown, DollarSign, Pencil, Trash2, CheckCircle, XCircle, Bell } from 'lucide-react'
+import { Plus, TrendingUp, TrendingDown, DollarSign, Trash2, CheckCircle, XCircle, Bell } from 'lucide-react'
 import { financeiroApi } from '../../api/finance'
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { DollarSign, TrendingUp, TrendingDown, FileText, Package, Users } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts'
+import { DollarSign, TrendingUp, TrendingDown, FileText } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { financeiroApi } from '../../api/finance'
 import { orcamentosApi } from '../../api/quotes'
 
@@ -37,8 +37,6 @@ export function Dashboard() {
 
   const aprovados = orcamentos.filter(o => o.status === 'aprovado')
   const totalAprovado = aprovados.reduce((s, o) => s + o.valor_venda, 0)
-  const pendentes = orcamentos.filter(o => o.status === 'rascunho').length
-
   const chartData = [
     { name: 'Entradas', valor: resumo?.total_entradas ?? 0 },
     { name: 'Saídas', valor: resumo?.total_saidas ?? 0 },

@@ -3,7 +3,7 @@ import type { InputHTMLAttributes, ReactNode } from 'react'
 import { forwardRef, useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 
-interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'prefix'> {
   label?: string
   error?: string
   hint?: string
