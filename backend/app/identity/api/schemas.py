@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
 
 class LoginRequest(BaseModel):
@@ -46,6 +46,8 @@ class UsuarioResponse(BaseModel):
     ativo: bool
     permissoes: list[str]
     comissao_percentual: float = 0
+    telefone: str | None = None
+    endereco: str | None = None
 
 
 class CriarUsuarioRequest(BaseModel):
@@ -56,6 +58,13 @@ class CriarUsuarioRequest(BaseModel):
     empresa_id: UUID | None = None
     permissoes: list[str] = []
     comissao_percentual: float = 0
+    telefone: str | None = None
+    endereco: str | None = None
+
+    @field_validator('perfil')
+    @classmethod
+    def normalize_perfil(cls, v: str) -> str:
+        return v.lower()
 
 
 class AtualizarUsuarioRequest(BaseModel):
@@ -64,6 +73,13 @@ class AtualizarUsuarioRequest(BaseModel):
     permissoes: list[str] = []
     comissao_percentual: float = 0
     senha: str | None = None
+    telefone: str | None = None
+    endereco: str | None = None
+
+    @field_validator('perfil')
+    @classmethod
+    def normalize_perfil(cls, v: str) -> str:
+        return v.lower()
 
 
 class EmpresaResponse(BaseModel):

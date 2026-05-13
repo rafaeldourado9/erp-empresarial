@@ -29,6 +29,7 @@ export function Financeiro() {
   const [modal, setModal] = useState<any>(null)
   const [modalConta, setModalConta] = useState<any>(null)
   const [modalCategoria, setModalCategoria] = useState<any>(null)
+  const [modalPagamento, setModalPagamento] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
   const inicio = primeiroDia(mes)
@@ -82,8 +83,25 @@ export function Financeiro() {
     carregarContas()
   }
 
-  const pagarConta = async (id: string) => {
-    await financeiroApi.pagarConta(id)
+  const abrirPagamento = (conta: any) => {
+    setModalPagamento({
+      id: conta.id,
+      descricao: conta.descricao,
+      valor: conta.valor,
+      data_pagamento: hoje.toISOString().split('T')[0],
+      valor_abatimento: 0,
+      motivo_abatimento: '',
+    })
+  }
+
+  const confirmarPagamento = async () => {
+    const { id, data_pagamento, valor_abatimento, motivo_abatimento } = modalPagamento
+    await financeiroApi.pagarConta(id, {
+      data_pagamento,
+      valor_abatimento: Number(valor_abatimento) || 0,
+      motivo_abatimento: motivo_abatimento || undefined,
+    })
+    setModalPagamento(null)
     carregarContas()
   }
 
@@ -328,20 +346,37 @@ export function Financeiro() {
                   <td className={`px-4 py-3 ${vencimentoClass(c.data_vencimento, c.status)}`}>
                     {new Date(c.data_vencimento + 'T00:00:00').toLocaleDateString('pt-BR')}
                   </td>
-                  <td className="px-4 py-3 text-right font-semibold text-gray-800">{fmt(c.valor)}</td>
+                  <td className="px-4 py-3 text-right">
+                    {c.valor_abatimento > 0 ? (
+                      <div className="space-y-0.5">
+                        <p className="text-xs text-gray-400 line-through">{fmt(c.valor)}</p>
+                        <p className="text-xs text-orange-500">− {fmt(c.valor_abatimento)}</p>
+                        <p className="font-semibold text-gray-800">{fmt(c.valor_pago)}</p>
+                      </div>
+                    ) : (
+                      <span className="font-semibold text-gray-800">{fmt(c.valor)}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                      c.status === 'pago' ? 'bg-green-100 text-green-700'
-                      : c.status === 'cancelado' ? 'bg-gray-100 text-gray-500'
-                      : 'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {c.status === 'pago' ? 'Pago' : c.status === 'cancelado' ? 'Cancelado' : 'Pendente'}
-                    </span>
+                    <div className="space-y-1">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        c.status === 'pago' ? 'bg-green-100 text-green-700'
+                        : c.status === 'cancelado' ? 'bg-gray-100 text-gray-500'
+                        : 'bg-yellow-100 text-yellow-700'
+                      }`}>
+                        {c.status === 'pago' ? 'Pago' : c.status === 'cancelado' ? 'Cancelado' : 'Pendente'}
+                      </span>
+                      {c.status === 'pago' && c.motivo_abatimento && (
+                        <p className="text-xs text-orange-500 max-w-[120px] truncate" title={c.motivo_abatimento}>
+                          Abat.: {c.motivo_abatimento}
+                        </p>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     {c.status === 'pendente' && (
                       <div className="flex gap-1">
-                        <button onClick={() => pagarConta(c.id)} title="Marcar como pago"
+                        <button onClick={() => abrirPagamento(c)} title="Registrar pagamento"
                           className="p-1 text-gray-400 hover:text-green-600">
                           <CheckCircle className="w-4 h-4" />
                         </button>
@@ -483,6 +518,76 @@ export function Financeiro() {
           </div>
         </div>
       )}
+
+      {/* ── Modal Pagamento ── */}
+      {modalPagamento && (() => {
+        const abat = Number(modalPagamento.valor_abatimento) || 0
+        const valorPagar = modalPagamento.valor - abat
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl">
+              <h2 className="font-semibold text-lg mb-1">Registrar Pagamento</h2>
+              <p className="text-sm text-gray-500 mb-4 truncate">{modalPagamento.descricao}</p>
+              <div className="space-y-3">
+                <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
+                  <div className="flex justify-between text-gray-600">
+                    <span>Valor original</span>
+                    <span className="font-medium">{fmt(modalPagamento.valor)}</span>
+                  </div>
+                  {abat > 0 && (
+                    <div className="flex justify-between text-orange-500">
+                      <span>Abatimento</span>
+                      <span className="font-medium">− {fmt(abat)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-gray-900 font-semibold border-t pt-1 mt-1">
+                    <span>Valor a pagar</span>
+                    <span>{fmt(Math.max(0, valorPagar))}</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Abatimento (R$)</label>
+                  <input
+                    type="number" min={0} step={0.01}
+                    value={modalPagamento.valor_abatimento}
+                    onChange={e => setModalPagamento((m: any) => ({ ...m, valor_abatimento: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                    placeholder="0,00 — opcional"
+                  />
+                </div>
+                {abat > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Motivo do abatimento</label>
+                    <input
+                      value={modalPagamento.motivo_abatimento}
+                      onChange={e => setModalPagamento((m: any) => ({ ...m, motivo_abatimento: e.target.value }))}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                      placeholder="Ex: desconto negociado, avaria..."
+                    />
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Data do pagamento</label>
+                  <input
+                    type="date"
+                    value={modalPagamento.data_pagamento}
+                    onChange={e => setModalPagamento((m: any) => ({ ...m, data_pagamento: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button onClick={() => setModalPagamento(null)}
+                  className="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
+                <button onClick={confirmarPagamento}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-medium">
+                  Confirmar Pagamento
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── Modal Categoria ── */}
       {modalCategoria && (

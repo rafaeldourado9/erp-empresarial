@@ -83,6 +83,9 @@ class Usuario:
     permissoes: list[Permissao]
     ativo: bool
     criado_em: datetime
+    comissao_percentual: float = 0.0
+    telefone: str | None = None
+    endereco: str | None = None
 
     @classmethod
     def criar(
@@ -94,6 +97,9 @@ class Usuario:
         perfil: PerfilUsuario = PerfilUsuario.OPERADOR,
         permissoes: list[Permissao] | None = None,
         empresa_id: UUID | None = None,
+        comissao_percentual: float = 0.0,
+        telefone: str | None = None,
+        endereco: str | None = None,
     ) -> "Usuario":
         senha_hash = bcrypt.hashpw(
             senha_plaintext.encode(), bcrypt.gensalt(rounds=12)
@@ -109,6 +115,9 @@ class Usuario:
             permissoes=permissoes or [],
             ativo=True,
             criado_em=datetime.now(UTC),
+            comissao_percentual=comissao_percentual,
+            telefone=telefone,
+            endereco=endereco,
         )
 
     def verificar_senha(self, senha: str) -> bool:

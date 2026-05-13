@@ -4,6 +4,7 @@ import { Plus, Trash2, Calculator, ArrowLeft, ChevronDown } from 'lucide-react'
 import { orcamentosApi, premissasApi } from '../../api/quotes'
 import { clientesApi } from '../../api/clients'
 import { operadoresApi } from '../../api/operators'
+import { variaveisApi } from '../../api/settings'
 
 const fmt = (v: number) =>
   `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -131,6 +132,7 @@ export function OrcamentoEditor() {
 
   // Campos extras da proposta (variáveis do template DOCX)
   const [camposExtras, setCamposExtras] = useState<Record<string, string>>({})
+  const [variaveisCustom, setVariaveisCustom] = useState<{ id: string; chave: string; label: string; grupo: string }[]>([])
 
   const [templates, setTemplates] = useState<PremissaTemplate[]>([])
   const [clientes, setClientes] = useState<any[]>([])
@@ -143,6 +145,7 @@ export function OrcamentoEditor() {
     operadoresApi.listar().then((ops: any[]) =>
       setVendedores(ops.filter(o => o.perfil?.toLowerCase() === 'vendedor' && o.ativo))
     ).catch(() => {})
+    variaveisApi.listar().then(d => setVariaveisCustom(d.personalizadas)).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -417,7 +420,7 @@ export function OrcamentoEditor() {
 
                 {/* Análise Financeira */}
                 <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-2">Análise Financeira</p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3 mb-4">
                   {field('economia_mensal', 'Economia Mensal Esperada', 'R$')}
                   {field('economia_mensal_p', 'Economia Esperada', '%')}
                   {field('vc_anual_atual', 'Conta de Luz Anual Atual', 'R$')}
@@ -426,7 +429,34 @@ export function OrcamentoEditor() {
                   {field('vc_servico', 'Valor dos Serviços', 'R$')}
                   {field('inflacao_energetica', 'Taxa de Inflação Energética', '% a.a.')}
                   {field('perda_eficiencia_anual', 'Perda de Eficiência Anual', '%')}
+                  {field('gasto_total_mensal_atual', 'Gasto Total Mensal Atual', 'R$')}
+                  {field('gasto_total_mensal_novo', 'Gasto Total Mensal Novo', 'R$')}
+                  {field('capo_bancario', 'Campo Bancário / Conta')}
                 </div>
+
+                {/* Módulo - campos extras */}
+                <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-2">Módulo Solar (extra)</p>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  {field('vc_modulo_eficiencia', 'Eficiência do Módulo', '%')}
+                  {field('inversor_potencia_nominal', 'Potência Nominal do Inversor')}
+                  {field('cliente_complemento', 'Complemento do Endereço')}
+                </div>
+
+                {/* Campos personalizados */}
+                {variaveisCustom.length > 0 && (() => {
+                  const grupos = variaveisCustom.reduce<Record<string, typeof variaveisCustom>>((acc, v) => {
+                    ;(acc[v.grupo] ||= []).push(v)
+                    return acc
+                  }, {})
+                  return Object.entries(grupos).map(([grupo, vars]) => (
+                    <div key={grupo} className="mb-4">
+                      <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide mb-2">{grupo}</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        {vars.map(v => field(v.chave, v.label))}
+                      </div>
+                    </div>
+                  ))
+                })()}
               </div>
             )
           })()}

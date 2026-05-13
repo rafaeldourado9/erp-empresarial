@@ -4,6 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -166,10 +167,15 @@ async def criar_operador(
         perfil=PerfilUsuario(body.perfil),
         permissoes=[Permissao(p) for p in body.permissoes],
         empresa_id=body.empresa_id,
+        comissao_percentual=body.comissao_percentual,
+        telefone=body.telefone or None,
+        endereco=body.endereco or None,
     )
-    novo.comissao_percentual = body.comissao_percentual
-    await repo.salvar(novo)
-    return UsuarioResponse(id=novo.id, nome=novo.nome, email=novo.email, perfil=novo.perfil.value, empresa_id=novo.empresa_id, grupo_id=novo.grupo_id, ativo=novo.ativo, permissoes=[p.value for p in novo.permissoes], comissao_percentual=float(novo.comissao_percentual))
+    try:
+        await repo.salvar(novo)
+    except IntegrityError:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="E-mail já cadastrado")
+    return UsuarioResponse(id=novo.id, nome=novo.nome, email=novo.email, perfil=novo.perfil.value, empresa_id=novo.empresa_id, grupo_id=novo.grupo_id, ativo=novo.ativo, permissoes=[p.value for p in novo.permissoes], comissao_percentual=float(novo.comissao_percentual), telefone=novo.telefone, endereco=novo.endereco)
 
 
 @router.put("/operadores/{operador_id}", response_model=UsuarioResponse)
@@ -187,13 +193,15 @@ async def atualizar_operador(
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     op.nome = body.nome
     op.perfil = PerfilUsuario(body.perfil)
-    op.permissoes = [Permissao(p).value for p in body.permissoes]
-    op.comissao_percentual = body.comissao_percentual
+    op.permissoes = [Permissao(p) for p in body.permissoes]
+    op.comissao_percentual = float(body.comissao_percentual)
+    op.telefone = body.telefone or None
+    op.endereco = body.endereco or None
     if body.senha:
         import bcrypt
         op.senha_hash = bcrypt.hashpw(body.senha.encode(), bcrypt.gensalt()).decode()
     await repo.salvar(op)
-    return UsuarioResponse(id=op.id, nome=op.nome, email=op.email, perfil=op.perfil.value, empresa_id=op.empresa_id, grupo_id=op.grupo_id, ativo=op.ativo, permissoes=op.permissoes, comissao_percentual=float(op.comissao_percentual))
+    return UsuarioResponse(id=op.id, nome=op.nome, email=op.email, perfil=op.perfil.value, empresa_id=op.empresa_id, grupo_id=op.grupo_id, ativo=op.ativo, permissoes=[p.value if hasattr(p, 'value') else p for p in op.permissoes], comissao_percentual=float(op.comissao_percentual), telefone=op.telefone, endereco=op.endereco)
 
 
 @router.post("/operadores/{operador_id}/toggle", response_model=UsuarioResponse)

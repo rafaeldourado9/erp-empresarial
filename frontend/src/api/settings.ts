@@ -11,3 +11,15 @@ export const configEmpresaApi = {
   obter: () => api.get('/empresa/config').then(r => r.data),
   atualizar: (data: object) => api.put('/empresa/config', data).then(r => r.data),
 }
+
+export const variaveisApi = {
+  listar: () => api.get('/orcamentos/variaveis').then(r => r.data) as Promise<{
+    sistema: { chave: string; label: string; grupo: string }[]
+    personalizadas: { id: string; chave: string; label: string; grupo: string }[]
+  }>,
+  criar: (data: { chave: string; label: string; grupo: string }) =>
+    api.post('/orcamentos/variaveis', data).then(r => r.data),
+  atualizar: (id: string, data: { chave: string; label: string; grupo: string }) =>
+    api.put(`/orcamentos/variaveis/${id}`, data).then(r => r.data),
+  deletar: (id: string) => api.delete(`/orcamentos/variaveis/${id}`),
+}

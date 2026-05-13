@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.identity.api.deps import UsuarioAtualDep
@@ -19,8 +20,68 @@ from app.quotes.api.schemas import (
 )
 from app.quotes.application.calculator import ItemCalculo, PremissaCalculo, calcular
 from app.quotes.infrastructure.repository import OrcamentoRepository, PremissaRepository
+from app.quotes.infrastructure.orm_models import VariavelOrcamentoORM
 
 router = APIRouter(tags=["orcamentos"])
+
+# ── Variáveis de sistema (não armazenadas em BD, apenas referência) ────────────
+VARIAVEIS_SISTEMA = [
+    # Identificação
+    {"chave": "NUMERO", "label": "Número do Orçamento", "grupo": "Identificação"},
+    {"chave": "TITULO", "label": "Título", "grupo": "Identificação"},
+    {"chave": "DATA", "label": "Data de Criação", "grupo": "Identificação"},
+    {"chave": "VALIDADE", "label": "Validade (dias)", "grupo": "Identificação"},
+    {"chave": "STATUS", "label": "Status", "grupo": "Identificação"},
+    # Empresa
+    {"chave": "EMPRESA", "label": "Nome da Empresa", "grupo": "Empresa"},
+    {"chave": "EMPRESA_CNPJ", "label": "CNPJ da Empresa", "grupo": "Empresa"},
+    # Cliente
+    {"chave": "CLIENTE", "label": "Nome do Cliente", "grupo": "Cliente"},
+    {"chave": "CLIENTE_CNPJ", "label": "CPF/CNPJ do Cliente", "grupo": "Cliente"},
+    {"chave": "CLIENTE_EMAIL", "label": "E-mail do Cliente", "grupo": "Cliente"},
+    {"chave": "CLIENTE_TELEFONE", "label": "Telefone do Cliente", "grupo": "Cliente"},
+    {"chave": "CLIENTE_ENDERECO", "label": "Endereço do Cliente", "grupo": "Cliente"},
+    {"chave": "CLIENTE_BAIRRO", "label": "Bairro do Cliente", "grupo": "Cliente"},
+    {"chave": "CLIENTE_CIDADE", "label": "Cidade do Cliente", "grupo": "Cliente"},
+    {"chave": "CLIENTE_ESTADO", "label": "Estado do Cliente", "grupo": "Cliente"},
+    {"chave": "CLIENTE_COMPLEMENTO", "label": "Complemento do Endereço", "grupo": "Cliente"},
+    # Vendedor
+    {"chave": "VENDEDOR", "label": "Vendedor Responsável", "grupo": "Vendedor"},
+    {"chave": "VENDEDOR_CELULAR", "label": "Celular do Vendedor", "grupo": "Vendedor"},
+    # Financeiro
+    {"chave": "VALOR_VENDA", "label": "Valor de Venda", "grupo": "Financeiro"},
+    {"chave": "CUSTO_BASE", "label": "Custo Base", "grupo": "Financeiro"},
+    {"chave": "SUBTOTAL", "label": "Subtotal", "grupo": "Financeiro"},
+    {"chave": "OBSERVACOES", "label": "Observações", "grupo": "Financeiro"},
+    # Dimensionamento Solar
+    {"chave": "POTENCIA_SISTEMA", "label": "Potência Instalada (kWp)", "grupo": "Dimensionamento Solar"},
+    {"chave": "GERACAO_MENSAL", "label": "Geração Mensal (kWh/mês)", "grupo": "Dimensionamento Solar"},
+    {"chave": "CONSUMO_MENSAL", "label": "Consumo Médio Mensal (kWh)", "grupo": "Dimensionamento Solar"},
+    {"chave": "AREA_UTIL", "label": "Área Necessária (m²)", "grupo": "Dimensionamento Solar"},
+    # Módulo Solar
+    {"chave": "MODULO_FABRICANTE", "label": "Fabricante do Módulo", "grupo": "Módulo Solar"},
+    {"chave": "MODULO_MODELO", "label": "Modelo do Módulo", "grupo": "Módulo Solar"},
+    {"chave": "MODULO_POTENCIA", "label": "Potência do Módulo (W)", "grupo": "Módulo Solar"},
+    {"chave": "MODULO_QUANTIDADE", "label": "Quantidade de Módulos", "grupo": "Módulo Solar"},
+    {"chave": "VC_MODULO_EFICIENCIA", "label": "Eficiência do Módulo (%)", "grupo": "Módulo Solar"},
+    # Inversor
+    {"chave": "INVERSOR_FABRICANTE", "label": "Fabricante do Inversor", "grupo": "Inversor"},
+    {"chave": "INVERSOR_POTENCIA", "label": "Potência do Inversor (kW)", "grupo": "Inversor"},
+    {"chave": "INVERSOR_POTENCIA_NOMINAL", "label": "Potência Nominal do Inversor", "grupo": "Inversor"},
+    {"chave": "INVERSORES_UTILIZADOS", "label": "Quantidade de Inversores", "grupo": "Inversor"},
+    # Análise Financeira
+    {"chave": "ECONOMIA_MENSAL", "label": "Economia Mensal Esperada (R$)", "grupo": "Análise Financeira"},
+    {"chave": "ECONOMIA_PERCENTUAL", "label": "Economia Esperada (%)", "grupo": "Análise Financeira"},
+    {"chave": "VC_ANUAL_ATUAL", "label": "Conta de Luz Anual Atual (R$)", "grupo": "Análise Financeira"},
+    {"chave": "VC_ANUAL_NOVO", "label": "Conta de Luz Anual com Solar (R$)", "grupo": "Análise Financeira"},
+    {"chave": "VC_ECONOMIA_ANUAL", "label": "Economia Anual (R$)", "grupo": "Análise Financeira"},
+    {"chave": "VC_SERVICO", "label": "Valor dos Serviços (R$)", "grupo": "Análise Financeira"},
+    {"chave": "INFLACAO_ENERGETICA", "label": "Taxa de Inflação Energética (% a.a.)", "grupo": "Análise Financeira"},
+    {"chave": "PERDA_EFICIENCIA_ANUAL", "label": "Perda de Eficiência Anual (%)", "grupo": "Análise Financeira"},
+    {"chave": "GASTO_TOTAL_MENSAL_ATUAL", "label": "Gasto Total Mensal Atual (R$)", "grupo": "Análise Financeira"},
+    {"chave": "GASTO_TOTAL_MENSAL_NOVO", "label": "Gasto Total Mensal Novo (R$)", "grupo": "Análise Financeira"},
+    {"chave": "CAPO_BANCARIO", "label": "Campo Bancário / Conta", "grupo": "Financeiro"},
+]
 
 
 def _empresa_id(usuario: UsuarioAtualDep) -> UUID:
@@ -506,6 +567,115 @@ async def gerar_pdf(
     )
 
 
+# ── Variáveis personalizadas de orçamento ─────────────────────────────────────
+
+class VariavelRequest(BaseModel):
+    chave: str
+    label: str
+    grupo: str = "Personalizado"
+
+
+class VariavelResponse(BaseModel):
+    id: str
+    chave: str
+    label: str
+    grupo: str
+    sistema: bool = False
+
+
+@router.get("/orcamentos/variaveis")
+async def listar_variaveis(
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    from sqlalchemy import select
+    eid = str(_empresa_id(usuario))
+    result = await db.execute(
+        select(VariavelOrcamentoORM).where(VariavelOrcamentoORM.empresa_id == eid)
+    )
+    custom = result.scalars().all()
+    return {
+        "sistema": VARIAVEIS_SISTEMA,
+        "personalizadas": [
+            {"id": v.id, "chave": v.chave, "label": v.label, "grupo": v.grupo}
+            for v in custom
+        ],
+    }
+
+
+@router.post("/orcamentos/variaveis", status_code=status.HTTP_201_CREATED)
+async def criar_variavel(
+    body: VariavelRequest,
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> VariavelResponse:
+    import re
+    from datetime import UTC, datetime
+    from sqlalchemy.exc import IntegrityError
+    chave = re.sub(r'[^a-z0-9_]', '_', body.chave.lower().strip())
+    if not chave:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Chave inválida")
+    eid = str(_empresa_id(usuario))
+    nova = VariavelOrcamentoORM(
+        id=str(__import__('uuid').uuid4()),
+        empresa_id=eid,
+        chave=chave,
+        label=body.label.strip(),
+        grupo=body.grupo.strip() or "Personalizado",
+        criado_em=datetime.now(UTC),
+    )
+    db.add(nova)
+    try:
+        await db.flush()
+    except IntegrityError:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="Já existe uma variável com essa chave")
+    return VariavelResponse(id=nova.id, chave=nova.chave, label=nova.label, grupo=nova.grupo)
+
+
+@router.put("/orcamentos/variaveis/{var_id}", response_model=VariavelResponse)
+async def atualizar_variavel(
+    var_id: str,
+    body: VariavelRequest,
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> VariavelResponse:
+    from sqlalchemy import select
+    eid = str(_empresa_id(usuario))
+    result = await db.execute(
+        select(VariavelOrcamentoORM).where(
+            VariavelOrcamentoORM.id == var_id,
+            VariavelOrcamentoORM.empresa_id == eid,
+        )
+    )
+    v = result.scalar_one_or_none()
+    if v is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    v.label = body.label.strip()
+    v.grupo = body.grupo.strip() or "Personalizado"
+    await db.flush()
+    return VariavelResponse(id=v.id, chave=v.chave, label=v.label, grupo=v.grupo)
+
+
+@router.delete("/orcamentos/variaveis/{var_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def deletar_variavel(
+    var_id: str,
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    from sqlalchemy import select
+    eid = str(_empresa_id(usuario))
+    result = await db.execute(
+        select(VariavelOrcamentoORM).where(
+            VariavelOrcamentoORM.id == var_id,
+            VariavelOrcamentoORM.empresa_id == eid,
+        )
+    )
+    v = result.scalar_one_or_none()
+    if v is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    await db.delete(v)
+
+
 # ── DOCX Template ─────────────────────────────────────────────────────────────
 
 @router.get("/orcamentos/template/exemplo")
@@ -654,9 +824,11 @@ async def gerar_docx(
         "MODULO_MODELO": _s("modulo_modelo"),
         "MODULO_POTENCIA": _s("modulo_potencia"),
         "MODULO_QUANTIDADE": _s("modulo_quantidade"),
+        "VC_MODULO_EFICIENCIA": _s("vc_modulo_eficiencia"),
         # Inversor
         "INVERSOR_FABRICANTE": _s("inversor_fabricante"),
         "INVERSOR_POTENCIA": _s("inversor_potencia"),
+        "INVERSOR_POTENCIA_NOMINAL": _s("inversor_potencia_nominal"),
         "INVERSORES_UTILIZADOS": _s("inversores_utilizados"),
         # Análise financeira
         "ECONOMIA_MENSAL": _s("economia_mensal"),
@@ -667,7 +839,22 @@ async def gerar_docx(
         "VC_SERVICO": _s("vc_servico"),
         "INFLACAO_ENERGETICA": _s("inflacao_energetica"),
         "PERDA_EFICIENCIA_ANUAL": _s("perda_eficiencia_anual"),
+        "GASTO_TOTAL_MENSAL_ATUAL": _s("gasto_total_mensal_atual"),
+        "GASTO_TOTAL_MENSAL_NOVO": _s("gasto_total_mensal_novo"),
+        # Financeiro extra
+        "CAPO_BANCARIO": _s("capo_bancario"),
+        # Complemento de endereço
+        "CLIENTE_COMPLEMENTO": _s("cliente_complemento"),
     }
+
+    # Injetar variáveis personalizadas da empresa no contexto
+    _vars_result = await db.execute(
+        select(VariavelOrcamentoORM).where(VariavelOrcamentoORM.empresa_id == str(empresa_id))
+    )
+    for _var in _vars_result.scalars():
+        _key = _var.chave.upper()
+        if _key not in context:
+            context[_key] = _s(_var.chave)
 
     # Mapeamento [bracket] → valor (compatível com template legado)
     bracket_map: dict[str, str] = {
@@ -678,6 +865,7 @@ async def gerar_docx(
         "[cliente_bairro]": context["CLIENTE_BAIRRO"],
         "[cliente_cidade]": context["CLIENTE_CIDADE"],
         "[cliente_estado]": context["CLIENTE_ESTADO"],
+        "[cliente_complemento]": context["CLIENTE_COMPLEMENTO"],
         "[consumo_mensal]": context["CONSUMO_MENSAL"],
         "[economia_mensal]": context["ECONOMIA_MENSAL"],
         "[economia_mensal_p]": context["ECONOMIA_PERCENTUAL"],
@@ -692,15 +880,26 @@ async def gerar_docx(
         "[representante_celular]": context["VENDEDOR_CELULAR"],
         "[inversor_fabricante]": context["INVERSOR_FABRICANTE"],
         "[inversor_potencia]": context["INVERSOR_POTENCIA"],
+        "[inversor_potencia_nominal]": context["INVERSOR_POTENCIA_NOMINAL"],
         "[inversores_utilizados]": context["INVERSORES_UTILIZADOS"],
         "[vc_servico]": context["VC_SERVICO"],
         "[preco]": context["PRECO"],
         "[vc_anual_atual]": context["VC_ANUAL_ATUAL"],
         "[vc_anual_novo]": context["VC_ANUAL_NOVO"],
         "[vc_economia_anual]": context["VC_ECONOMIA_ANUAL"],
+        "[vc_modulo_eficiencia]": context["VC_MODULO_EFICIENCIA"],
         "[inflacao_energetica]": context["INFLACAO_ENERGETICA"],
         "[perda_eficiencia_anual]": context["PERDA_EFICIENCIA_ANUAL"],
+        "[gasto_total_mensal_atual]": context["GASTO_TOTAL_MENSAL_ATUAL"],
+        "[gasto_total_mensal_novo]": context["GASTO_TOTAL_MENSAL_NOVO"],
+        "[capo_bancario]": context["CAPO_BANCARIO"],
     }
+
+    # Adicionar variáveis personalizadas ao bracket_map
+    for _key_upper, _val in context.items():
+        _bracket_key = f"[{_key_upper.lower()}]"
+        if _bracket_key not in bracket_map and isinstance(_val, str):
+            bracket_map[_bracket_key] = _val
 
     # Render com docxtpl ({{ }})
     doc = DocxTemplate(str(template_path))

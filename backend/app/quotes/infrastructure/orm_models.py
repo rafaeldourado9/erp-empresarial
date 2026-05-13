@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.database import Base
@@ -77,3 +77,15 @@ class ItemOrcamentoORM(Base):
     valor_unitario: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
     valor_calculado: Mapped[float] = mapped_column(Numeric(15, 2), nullable=False, default=0)
     ordem: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class VariavelOrcamentoORM(Base):
+    __tablename__ = "variaveis_orcamento"
+    __table_args__ = (UniqueConstraint("empresa_id", "chave", name="uq_variaveis_empresa_chave"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    empresa_id: Mapped[str] = mapped_column(String(36), ForeignKey("empresas.id"), nullable=False, index=True)
+    chave: Mapped[str] = mapped_column(String(100), nullable=False)
+    label: Mapped[str] = mapped_column(String(200), nullable=False)
+    grupo: Mapped[str] = mapped_column(String(100), nullable=False, default="Personalizado")
+    criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

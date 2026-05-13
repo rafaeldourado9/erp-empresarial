@@ -116,8 +116,17 @@ class ContaResponse(BaseModel):
     orcamento_id: UUID | None
     cliente_id: UUID | None
     observacoes: str | None
+    valor_abatimento: float
+    motivo_abatimento: str | None
+    valor_pago: float
     criado_por: UUID
     criado_em: datetime
+
+
+class PagarContaRequest(BaseModel):
+    data_pagamento: date | None = None
+    valor_abatimento: float = 0
+    motivo_abatimento: str | None = None
 
 
 # ── Conversores ───────────────────────────────────────────────────────────────
@@ -132,6 +141,7 @@ def _to_movimento(m: MovimentoCaixaORM) -> MovimentoResponse:
 
 
 def _to_conta(c: ContaORM) -> ContaResponse:
+    abatimento = float(c.valor_abatimento or 0)
     return ContaResponse(
         id=UUID(c.id), empresa_id=UUID(c.empresa_id), tipo=c.tipo,
         descricao=c.descricao, parceiro=c.parceiro, valor=float(c.valor),
@@ -140,6 +150,9 @@ def _to_conta(c: ContaORM) -> ContaResponse:
         orcamento_id=UUID(c.orcamento_id) if c.orcamento_id else None,
         cliente_id=UUID(c.cliente_id) if c.cliente_id else None,
         observacoes=c.observacoes,
+        valor_abatimento=abatimento,
+        motivo_abatimento=c.motivo_abatimento,
+        valor_pago=float(c.valor) - abatimento,
         criado_por=UUID(c.criado_por), criado_em=c.criado_em,
     )
 
@@ -386,9 +399,9 @@ async def criar_conta(
 @router.patch("/contas/{conta_id}/pagar", response_model=ContaResponse)
 async def pagar_conta(
     conta_id: UUID,
+    body: PagarContaRequest,
     usuario: UsuarioAtualDep,
     db: Annotated[AsyncSession, Depends(get_db)],
-    data_pagamento: date | None = Query(None),
 ) -> ContaResponse:
     eid = str(_empresa_id(usuario))
     result = await db.execute(
@@ -397,8 +410,13 @@ async def pagar_conta(
     conta = result.scalar_one_or_none()
     if conta is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+    abatimento = float(body.valor_abatimento or 0)
+    if abatimento < 0 or abatimento >= float(conta.valor):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Abatimento inválido")
     conta.status = "pago"
-    conta.data_pagamento = data_pagamento or date.today()
+    conta.data_pagamento = body.data_pagamento or date.today()
+    conta.valor_abatimento = abatimento
+    conta.motivo_abatimento = body.motivo_abatimento
     await db.flush()
     return _to_conta(conta)
 

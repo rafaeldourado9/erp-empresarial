@@ -62,6 +62,7 @@ class ItemOSORM(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     os_id: Mapped[str] = mapped_column(String(36), ForeignKey("ordens_servico.id", ondelete="CASCADE"), nullable=False, index=True)
     produto_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("produtos_caixa.id"), nullable=True)
+    item_estoque_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("itens_estoque.id"), nullable=True)
     descricao: Mapped[str] = mapped_column(String(300), nullable=False)
     quantidade: Mapped[float] = mapped_column(Numeric(12, 3), nullable=False, default=1)
     valor_unitario: Mapped[float] = mapped_column(Numeric(15, 2), nullable=False)

@@ -75,6 +75,9 @@ def usuario_to_domain(o: UsuarioORM) -> Usuario:
         permissoes=[Permissao(p) for p in o.permissoes],
         ativo=o.ativo,
         criado_em=o.criado_em,
+        comissao_percentual=float(o.comissao_percentual or 0),
+        telefone=getattr(o, 'telefone', None),
+        endereco=getattr(o, 'endereco', None),
     )
 
 
@@ -90,4 +93,7 @@ def usuario_to_orm(u: Usuario) -> UsuarioORM:
         permissoes=[p.value for p in u.permissoes],
         ativo=u.ativo,
         criado_em=u.criado_em,
+        comissao_percentual=float(u.comissao_percentual),
+        telefone=u.telefone,
+        endereco=u.endereco,
     )

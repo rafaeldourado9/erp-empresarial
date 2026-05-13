@@ -51,5 +51,7 @@ class ContaORM(Base):
     orcamento_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("orcamentos.id"), nullable=True)
     cliente_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("clientes.id"), nullable=True)
     observacoes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    valor_abatimento: Mapped[float] = mapped_column(Numeric(15, 2), nullable=False, default=0)
+    motivo_abatimento: Mapped[str | None] = mapped_column(Text, nullable=True)
     criado_por: Mapped[str] = mapped_column(String(36), ForeignKey("usuarios.id"), nullable=False)
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
