@@ -48,6 +48,7 @@ class OrcamentoORM(Base):
     enviado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     fechado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     campos_extras: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    solar_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class PremissaOrcamentoORM(Base):

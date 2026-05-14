@@ -12,6 +12,7 @@ from app.inventory.api.router import router as estoque_router
 from app.pos.api.router import router as caixa_router
 from app.prospecting.api.router import router as prospeccao_router
 from app.quotes.api.router import router as orcamentos_router
+from app.quotes.api.solar_router import router as solar_router
 
 app = FastAPI(
     title="ERP Empresarial",
@@ -32,6 +33,7 @@ app.include_router(identity_router, prefix="/api/v1")
 app.include_router(clientes_router, prefix="/api/v1")
 app.include_router(estoque_router, prefix="/api/v1")
 app.include_router(orcamentos_router, prefix="/api/v1")
+app.include_router(solar_router, prefix="/api/v1")
 app.include_router(financeiro_router, prefix="/api/v1")
 app.include_router(comissoes_router, prefix="/api/v1")
 app.include_router(prospeccao_router, prefix="/api/v1")
