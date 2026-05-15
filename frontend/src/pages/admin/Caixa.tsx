@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, ReactNode } from 'react'
-import { Plus, Trash2, Power, ClipboardList, Package, CheckCircle, XCircle, Pencil } from 'lucide-react'
-import { caixaApi } from '../../api/pos'
+import { Plus, Trash2, Power, ClipboardList, Package, CheckCircle, XCircle, Pencil, FileText, Download } from 'lucide-react'
+import { caixaApi, downloadBlob } from '../../api/pos'
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
 
@@ -26,10 +26,11 @@ interface ItemOS {
 
 // ── Aba: Nova OS ──────────────────────────────────────────────────────────────
 
-function NovaOSForm({ sessaoId: _sessaoId, produtos, onCriada }: {
+function NovaOSForm({ sessaoId: _sessaoId, produtos, onCriada, onProdutosChange }: {
   sessaoId: string
   produtos: Produto[]
   onCriada: () => void
+  onProdutosChange: () => Promise<Produto[]> | void
 }) {
   const [nomeCliente, setNomeCliente] = useState('')
   const [tipoServico, setTipoServico] = useState('')
@@ -40,6 +41,25 @@ function NovaOSForm({ sessaoId: _sessaoId, produtos, onCriada }: {
   const [formaPagamento, setFormaPagamento] = useState('Dinheiro')
   const [observacoes, setObservacoes] = useState('')
   const [loading, setLoading] = useState(false)
+  const [modalProduto, setModalProduto] = useState<{ nome: string; valor: number | ''; unidade: string; descricao?: string } | null>(null)
+
+  const criarProdutoInline = async () => {
+    if (!modalProduto?.nome || modalProduto.valor === '') return
+    try {
+      const novo = await caixaApi.criarProduto({
+        nome: modalProduto.nome,
+        descricao: modalProduto.descricao || undefined,
+        valor: Number(modalProduto.valor),
+        unidade: modalProduto.unidade || 'un',
+      })
+      setModalProduto(null)
+      await onProdutosChange()
+      // Adicionar imediatamente à OS em construção
+      addItemProduto(novo as Produto)
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Erro ao criar produto')
+    }
+  }
 
   const addItemProduto = (p: Produto) => {
     setItens(prev => [...prev, {
@@ -188,9 +208,20 @@ function NovaOSForm({ sessaoId: _sessaoId, produtos, onCriada }: {
       {/* Painel lateral: catálogo + resumo */}
       <div className="space-y-4">
         {/* Catálogo rápido */}
-        {produtos.length > 0 && (
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-            <h3 className="font-semibold text-gray-800 text-sm mb-3">Catálogo</h3>
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-gray-800 text-sm">Catálogo</h3>
+            <button
+              onClick={() => setModalProduto({ nome: '', valor: '', unidade: 'un' })}
+              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium"
+              title="Criar novo produto"
+            >
+              <Plus className="w-3.5 h-3.5" /> Novo produto
+            </button>
+          </div>
+          {produtos.length === 0 ? (
+            <p className="text-xs text-gray-400 py-2">Nenhum produto cadastrado. Use o botão acima ou a aba Produtos.</p>
+          ) : (
             <div className="space-y-1.5 max-h-48 overflow-y-auto">
               {produtos.map(p => (
                 <button key={p.id} onClick={() => addItemProduto(p)}
@@ -200,8 +231,8 @@ function NovaOSForm({ sessaoId: _sessaoId, produtos, onCriada }: {
                 </button>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Resumo + pagamento */}
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 sticky top-6">
@@ -248,9 +279,135 @@ function NovaOSForm({ sessaoId: _sessaoId, produtos, onCriada }: {
           </button>
         </div>
       </div>
+
+      {/* Modal: criar produto inline */}
+      {modalProduto && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl">
+            <h2 className="font-semibold text-lg mb-1">Novo Produto</h2>
+            <p className="text-xs text-gray-500 mb-4">Ao salvar, o produto entra no catálogo e é adicionado a esta OS.</p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
+                <input value={modalProduto.nome} autoFocus
+                  onChange={e => setModalProduto(m => m && { ...m, nome: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ex: Troca de tomada" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Valor (R$) *</label>
+                  <input type="number" min={0} step={0.01} value={modalProduto.valor}
+                    onChange={e => setModalProduto(m => m && { ...m, valor: e.target.value === '' ? '' : +e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="0,00" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Unidade</label>
+                  <input value={modalProduto.unidade}
+                    onChange={e => setModalProduto(m => m && { ...m, unidade: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="un" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+                <input value={modalProduto.descricao ?? ''}
+                  onChange={e => setModalProduto(m => m && { ...m, descricao: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button onClick={() => setModalProduto(null)}
+                className="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button onClick={criarProdutoInline}
+                disabled={!modalProduto.nome || modalProduto.valor === ''}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-medium disabled:opacity-50">
+                Salvar e adicionar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
+// ── Modal: Relatório do período ───────────────────────────────────────────────
+
+function ModalRelatorio({ onClose }: { onClose: () => void }) {
+  const hoje = new Date().toISOString().slice(0, 10)
+  const trintaDiasAtras = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10)
+  const [inicio, setInicio] = useState(trintaDiasAtras)
+  const [fim, setFim] = useState(hoje)
+  const [statusFiltro, setStatusFiltro] = useState('')
+  const [baixando, setBaixando] = useState(false)
+
+  const baixar = async () => {
+    setBaixando(true)
+    try {
+      const params: Record<string, string> = {}
+      if (inicio) params.inicio = inicio
+      if (fim) params.fim = fim
+      if (statusFiltro) params.status = statusFiltro
+      const blob = await caixaApi.baixarRelatorioPdf(params)
+      const partes = [inicio, fim].filter(Boolean).join('_')
+      downloadBlob(blob, `relatorio-os${partes ? '-' + partes : ''}.pdf`)
+      onClose()
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Erro ao gerar relatório')
+    } finally {
+      setBaixando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
+        <h2 className="font-semibold text-lg mb-1">Relatório do período</h2>
+        <p className="text-xs text-gray-500 mb-4">PDF resumindo as ordens de serviço por intervalo e status.</p>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Início</label>
+              <input type="date" value={inicio} onChange={e => setInicio(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fim</label>
+              <input type="date" value={fim} onChange={e => setFim(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            <select value={statusFiltro} onChange={e => setStatusFiltro(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">Todos</option>
+              <option value="aberta">Aberta</option>
+              <option value="concluida">Concluída</option>
+              <option value="cancelada">Cancelada</option>
+            </select>
+          </div>
+        </div>
+        <div className="flex gap-2 mt-5">
+          <button onClick={onClose} disabled={baixando}
+            className="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+            Cancelar
+          </button>
+          <button onClick={baixar} disabled={baixando}
+            className="flex-1 flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-medium disabled:opacity-50">
+            <Download className="w-4 h-4" />
+            {baixando ? 'Gerando...' : 'Baixar PDF'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 
 // ── Aba: OS da sessão ─────────────────────────────────────────────────────────
 
@@ -258,6 +415,7 @@ function OrdensServico({ sessaoId }: { sessaoId: string }) {
   const [ordens, setOrdens] = useState<any[]>([])
   const [detalhe, setDetalhe] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [modalRelatorio, setModalRelatorio] = useState(false)
 
   const carregar = useCallback(() => {
     setLoading(true)
@@ -281,6 +439,17 @@ function OrdensServico({ sessaoId }: { sessaoId: string }) {
     if (detalhe?.id === id) setDetalhe(null)
   }
 
+  const baixarPDF = async (os: any, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    try {
+      const blob = await caixaApi.baixarPdfOS(os.id)
+      downloadBlob(blob, `os-${os.numero}.pdf`)
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Erro ao gerar PDF')
+    }
+  }
+
+
   const statusBadge = (s: string) => {
     if (s === 'concluida') return <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Concluída</span>
     if (s === 'cancelada') return <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Cancelada</span>
@@ -292,9 +461,16 @@ function OrdensServico({ sessaoId }: { sessaoId: string }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="p-4 border-b flex items-center justify-between">
+        <div className="p-4 border-b flex items-center justify-between gap-3">
           <h2 className="font-semibold text-gray-800">OS desta sessão</h2>
-          <span className="text-sm text-green-600 font-medium">{fmt(totalSessao)} concluídas</span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-green-600 font-medium">{fmt(totalSessao)} concluídas</span>
+            <button onClick={() => setModalRelatorio(true)}
+              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium"
+              title="Relatório do período em PDF">
+              <FileText className="w-3.5 h-3.5" /> Relatório
+            </button>
+          </div>
         </div>
         {loading && <p className="text-center py-8 text-gray-400 text-sm">Carregando...</p>}
         <div className="divide-y max-h-[500px] overflow-y-auto">
@@ -311,9 +487,14 @@ function OrdensServico({ sessaoId }: { sessaoId: string }) {
                 <p className="text-sm font-medium text-gray-800">{os.numero} — {os.nome_cliente}</p>
                 <p className="text-xs text-gray-500">{os.tipo_servico} · {os.forma_pagamento}</p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 {statusBadge(os.status)}
                 <span className="text-sm font-semibold text-gray-700">{fmt(os.total)}</span>
+                <button onClick={(e) => baixarPDF(os, e)}
+                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                  title="Baixar PDF">
+                  <Download className="w-4 h-4" />
+                </button>
               </div>
             </div>
           ))}
@@ -358,20 +539,28 @@ function OrdensServico({ sessaoId }: { sessaoId: string }) {
             <div className="flex justify-between font-bold text-gray-900 pt-1 border-t"><span>Total</span><span>{fmt(detalhe.total)}</span></div>
           </div>
 
-          {detalhe.status === 'aberta' && (
-            <div className="flex gap-2 mt-4">
-              <button onClick={() => cancelar(detalhe.id)}
-                className="flex-1 flex items-center justify-center gap-1 border border-red-200 text-red-600 hover:bg-red-50 py-2 rounded-lg text-sm">
-                <XCircle className="w-4 h-4" /> Cancelar
-              </button>
-              <button onClick={() => concluir(detalhe.id)}
-                className="flex-1 flex items-center justify-center gap-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-medium">
-                <CheckCircle className="w-4 h-4" /> Concluir
-              </button>
-            </div>
-          )}
+          <div className="flex gap-2 mt-4">
+            <button onClick={() => baixarPDF(detalhe)}
+              className="flex-1 flex items-center justify-center gap-1 border border-blue-200 text-blue-600 hover:bg-blue-50 py-2 rounded-lg text-sm">
+              <Download className="w-4 h-4" /> PDF
+            </button>
+            {detalhe.status === 'aberta' && (
+              <>
+                <button onClick={() => cancelar(detalhe.id)}
+                  className="flex-1 flex items-center justify-center gap-1 border border-red-200 text-red-600 hover:bg-red-50 py-2 rounded-lg text-sm">
+                  <XCircle className="w-4 h-4" /> Cancelar
+                </button>
+                <button onClick={() => concluir(detalhe.id)}
+                  className="flex-1 flex items-center justify-center gap-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-medium">
+                  <CheckCircle className="w-4 h-4" /> Concluir
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
+
+      {modalRelatorio && <ModalRelatorio onClose={() => setModalRelatorio(false)} />}
     </div>
   )
 }
@@ -507,8 +696,14 @@ export function Caixa() {
     caixaApi.statusSessao().then(setSessao).catch(() => setSessao(null)).finally(() => setLoadingSessao(false))
   }
 
-  const carregarProdutos = () => {
-    caixaApi.listarProdutos().then(setProdutos).catch(() => {})
+  const carregarProdutos = async () => {
+    try {
+      const lista = await caixaApi.listarProdutos()
+      setProdutos(lista)
+      return lista as Produto[]
+    } catch {
+      return [] as Produto[]
+    }
   }
 
   useEffect(() => {
@@ -589,7 +784,8 @@ export function Caixa() {
 
       {/* Conteúdo */}
       {tab === 'nova-os' && (
-        <NovaOSForm sessaoId={sessao.id} produtos={produtos} onCriada={() => setTab('ordens')} />
+        <NovaOSForm sessaoId={sessao.id} produtos={produtos} onCriada={() => setTab('ordens')}
+          onProdutosChange={carregarProdutos} />
       )}
       {tab === 'ordens' && (
         <OrdensServico sessaoId={sessao.id} />

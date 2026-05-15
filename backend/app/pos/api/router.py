@@ -1,16 +1,18 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time
 from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.identity.api.deps import UsuarioAtualDep
 from app.infrastructure.database import get_db
+from app.pos.application.pdf_service import gerar_pdf_os, gerar_pdf_relatorio_os
 from app.pos.infrastructure.orm_models import (
     ItemOSORM, OrdemServicoORM, ProdutoCaixaORM, SessaoCaixaORM,
 )
@@ -427,9 +429,29 @@ async def concluir_os(
     os = result.scalar_one_or_none()
     if os is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="OS não encontrada")
+    if os.status == "concluida":
+        return await _os_to_response(os, db)
     os.status = "concluida"
     os.concluido_em = datetime.now(UTC)
     await db.flush()
+
+    # Auto-criar movimento de caixa com origem=caixa (Fase 4.A)
+    from app.finance.infrastructure.orm_models import MovimentoCaixaORM
+    from datetime import date as _date
+    mov = MovimentoCaixaORM(
+        id=str(uuid4()), empresa_id=os.empresa_id, tipo="entrada",
+        categoria="Serviço",
+        descricao=f"OS {os.numero} — {os.nome_cliente} ({os.forma_pagamento})",
+        valor=float(os.total),
+        data=_date.today(),
+        orcamento_id=None,
+        criado_por=str(usuario.id), criado_em=datetime.now(UTC),
+        conciliado=False,
+        origem="caixa",
+    )
+    db.add(mov)
+    await db.flush()
+
     return await _os_to_response(os, db)
 
 
@@ -451,3 +473,78 @@ async def cancelar_os(
     os.status = "cancelada"
     await db.flush()
     return await _os_to_response(os, db)
+
+
+# ── PDFs ──────────────────────────────────────────────────────────────────────
+
+async def _empresa_nome(db: AsyncSession, empresa_id: UUID) -> str:
+    from app.identity.infrastructure.orm_models import EmpresaORM
+    result = await db.execute(select(EmpresaORM).where(EmpresaORM.id == str(empresa_id)))
+    emp = result.scalar_one_or_none()
+    return emp.nome if emp else ""
+
+
+@router.get("/os/relatorio/pdf")
+async def relatorio_os_pdf(
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    inicio: date | None = Query(None),
+    fim: date | None = Query(None),
+    status_filtro: str | None = Query(None, alias="status"),
+) -> Response:
+    """PDF resumo das OS no período. inicio/fim opcionais (sem filtro = todas)."""
+    empresa_id = _empresa_id(usuario)
+    q = select(OrdemServicoORM).where(OrdemServicoORM.empresa_id == str(empresa_id))
+    if inicio:
+        q = q.where(OrdemServicoORM.criado_em >= datetime.combine(inicio, time.min, tzinfo=UTC))
+    if fim:
+        q = q.where(OrdemServicoORM.criado_em <= datetime.combine(fim, time.max, tzinfo=UTC))
+    if status_filtro:
+        q = q.where(OrdemServicoORM.status == status_filtro)
+    result = await db.execute(q.order_by(OrdemServicoORM.criado_em.asc()))
+    ordens = list(result.scalars())
+
+    pdf = gerar_pdf_relatorio_os(
+        ordens=ordens, inicio=inicio, fim=fim, status_filtro=status_filtro,
+        empresa_nome=await _empresa_nome(db, empresa_id),
+    )
+    sufixo = ""
+    if inicio:
+        sufixo += f"-{inicio.isoformat()}"
+    if fim:
+        sufixo += f"_{fim.isoformat()}"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="relatorio-os{sufixo}.pdf"'},
+    )
+
+
+@router.get("/os/{os_id}/pdf")
+async def baixar_pdf_os(
+    os_id: UUID,
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    empresa_id = _empresa_id(usuario)
+    result = await db.execute(
+        select(OrdemServicoORM).where(
+            OrdemServicoORM.id == str(os_id),
+            OrdemServicoORM.empresa_id == str(empresa_id),
+        )
+    )
+    os = result.scalar_one_or_none()
+    if os is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="OS não encontrada")
+
+    itens_result = await db.execute(
+        select(ItemOSORM).where(ItemOSORM.os_id == os.id).order_by(ItemOSORM.descricao)
+    )
+    itens = list(itens_result.scalars())
+
+    pdf = gerar_pdf_os(os, itens, empresa_nome=await _empresa_nome(db, empresa_id))
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="os-{os.numero}.pdf"'},
+    )

@@ -14,6 +14,7 @@ class PremissaRequest(BaseModel):
     tipo: str  # percentual | fixo
     valor: float
     ordem: int = 0
+    obrigatoria: bool = False
 
 
 class PremissaResponse(BaseModel):
@@ -24,6 +25,7 @@ class PremissaResponse(BaseModel):
     valor: float
     ordem: int
     ativo: bool
+    obrigatoria: bool = False
 
 
 # ── Premissas aplicadas ao orçamento ─────────────────────────────────────────
@@ -46,6 +48,7 @@ class PremissaOrcamentoResponse(BaseModel):
     valor: float
     valor_calculado: float
     ordem: int
+    obrigatoria: bool = False
 
 
 # ── Itens do orçamento (manual / produto) ─────────────────────────────────────

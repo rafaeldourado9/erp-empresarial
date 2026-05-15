@@ -22,6 +22,8 @@ class MovimentoCaixaORM(Base):
     criado_por: Mapped[str] = mapped_column(String(36), ForeignKey("usuarios.id"), nullable=False)
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     conciliado: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # caixa | orcamento | comissao | manual
+    origem: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
 
 
 class CategoriaFinanceiroORM(Base):
@@ -51,7 +53,23 @@ class ContaORM(Base):
     orcamento_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("orcamentos.id"), nullable=True)
     cliente_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("clientes.id"), nullable=True)
     observacoes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Legado — não usar em código novo. valor_pago é derivado de pagamentos_parciais.
     valor_abatimento: Mapped[float] = mapped_column(Numeric(15, 2), nullable=False, default=0)
     motivo_abatimento: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # caixa | orcamento | comissao | manual
+    origem: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
     criado_por: Mapped[str] = mapped_column(String(36), ForeignKey("usuarios.id"), nullable=False)
+    criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PagamentoParcialORM(Base):
+    __tablename__ = "pagamentos_parciais"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    conta_id: Mapped[str] = mapped_column(String(36), ForeignKey("contas.id", ondelete="CASCADE"),
+                                          nullable=False, index=True)
+    valor: Mapped[float] = mapped_column(Numeric(15, 2), nullable=False)
+    data: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    observacao: Mapped[str | None] = mapped_column(Text, nullable=True)
+    operador_id: Mapped[str] = mapped_column(String(36), ForeignKey("usuarios.id"), nullable=False)
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

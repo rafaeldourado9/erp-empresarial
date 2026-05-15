@@ -38,16 +38,28 @@ class PremissaRepository:
 
     async def criar(
         self, empresa_id: UUID, nome: str, tipo: str, valor: float,
-        ordem: int = 0, descricao: str | None = None,
+        ordem: int = 0, descricao: str | None = None, obrigatoria: bool = False,
     ) -> PremissaORM:
         orm = PremissaORM(
             id=str(uuid4()), empresa_id=str(empresa_id), nome=nome,
             descricao=descricao, tipo=tipo, valor=valor, ordem=ordem,
-            ativo=True, criado_em=datetime.now(UTC),
+            ativo=True, obrigatoria=obrigatoria, criado_em=datetime.now(UTC),
         )
         self._db.add(orm)
         await self._db.flush()
         return orm
+
+    async def listar_obrigatorias(self, empresa_id: UUID) -> list[PremissaORM]:
+        result = await self._db.execute(
+            select(PremissaORM)
+            .where(
+                PremissaORM.empresa_id == str(empresa_id),
+                PremissaORM.ativo == True,
+                PremissaORM.obrigatoria == True,
+            )
+            .order_by(PremissaORM.ordem, PremissaORM.nome)
+        )
+        return list(result.scalars())
 
 
 class OrcamentoRepository:
@@ -129,13 +141,14 @@ class OrcamentoRepository:
     async def criar_premissa(
         self, orcamento_id: UUID, premissa_id: UUID | None,
         nome: str, descricao: str | None, tipo: str, valor: float,
-        valor_calculado: float, ordem: int,
+        valor_calculado: float, ordem: int, obrigatoria: bool = False,
     ) -> PremissaOrcamentoORM:
         orm = PremissaOrcamentoORM(
             id=str(uuid4()), orcamento_id=str(orcamento_id),
             premissa_id=str(premissa_id) if premissa_id else None,
             nome=nome, descricao=descricao, tipo=tipo, valor=valor,
             valor_calculado=valor_calculado, ordem=ordem,
+            obrigatoria=obrigatoria,
         )
         self._db.add(orm)
         await self._db.flush()

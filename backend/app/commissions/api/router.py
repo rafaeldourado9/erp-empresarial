@@ -120,5 +120,25 @@ async def pagar_comissao(
     if c is None:
         from fastapi import HTTPException
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+    if c.status == "pago":
+        return _to_response(c)
     c.status = "pago"
+
+    # Auto-criar conta a pagar com origem=comissao (Fase 4.A)
+    from app.finance.infrastructure.orm_models import ContaORM
+    conta = ContaORM(
+        id=str(uuid4()), empresa_id=eid, tipo="pagar",
+        descricao=f"Comissão {c.orcamento_numero or ''} — {c.vendedor_nome or 'vendedor'}".strip(),
+        parceiro=c.vendedor_nome,
+        valor=float(c.valor_comissao),
+        data_vencimento=date.today(),
+        status="pendente",
+        orcamento_id=c.orcamento_id,
+        observacoes=f"Auto-criada ao marcar comissão como paga",
+        origem="comissao",
+        criado_por=str(usuario.id), criado_em=datetime.now(UTC),
+    )
+    db.add(conta)
+    await db.flush()
+
     return _to_response(c)

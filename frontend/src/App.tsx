@@ -6,6 +6,7 @@ import { Dashboard } from './pages/admin/Dashboard'
 import { Estoque } from './pages/admin/Estoque'
 import { Orcamentos } from './pages/admin/Orcamentos'
 import { OrcamentoEditor } from './pages/admin/OrcamentoEditor'
+import { OrcamentoWizard } from './pages/admin/orcamento/OrcamentoWizard'
 import { Clientes } from './pages/admin/Clientes'
 import { Financeiro } from './pages/admin/Financeiro'
 import { Comissoes } from './pages/admin/Comissoes'
@@ -27,8 +28,9 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/estoque" element={<Estoque />} />
           <Route path="/orcamentos" element={<Orcamentos />} />
-          <Route path="/orcamentos/novo" element={<OrcamentoEditor />} />
-          <Route path="/orcamentos/:id" element={<OrcamentoEditor />} />
+          <Route path="/orcamentos/novo" element={<OrcamentoWizard />} />
+          <Route path="/orcamentos/:id" element={<OrcamentoWizard />} />
+          <Route path="/orcamentos/:id/classic" element={<OrcamentoEditor />} />
           <Route path="/clientes" element={<Clientes />} />
           <Route path="/vendedores" element={<Vendedores />} />
           <Route path="/financeiro" element={<Financeiro />} />

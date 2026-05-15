@@ -23,7 +23,10 @@ export const orcamentosApi = {
     form.append('file', file)
     return api.post('/orcamentos/template', form, { headers: { 'Content-Type': 'multipart/form-data' } })
   },
-  urlPdf: (id: string) => `/api/v1/orcamentos/${id}/pdf`,
-  urlDocx: (id: string) => `/api/v1/orcamentos/${id}/docx`,
-  urlTemplateExemplo: () => `/api/v1/orcamentos/template/exemplo`,
+  baixarPdf: (id: string) =>
+    api.get(`/orcamentos/${id}/pdf`, { responseType: 'blob' }).then(r => r.data as Blob),
+  baixarDocx: (id: string) =>
+    api.get(`/orcamentos/${id}/docx`, { responseType: 'blob' }).then(r => r.data as Blob),
+  baixarTemplateExemplo: () =>
+    api.get(`/orcamentos/template/exemplo`, { responseType: 'blob' }).then(r => r.data as Blob),
 }

@@ -5,12 +5,16 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.finance.application.pdf_service import (
+    gerar_pdf_aging, gerar_pdf_dre, gerar_pdf_extrato,
+)
 from app.finance.infrastructure.orm_models import (
-    CategoriaFinanceiroORM, ContaORM, MovimentoCaixaORM,
+    CategoriaFinanceiroORM, ContaORM, MovimentoCaixaORM, PagamentoParcialORM,
 )
 from app.identity.api.deps import UsuarioAtualDep
 from app.infrastructure.database import get_db
@@ -101,6 +105,7 @@ class ContaRequest(BaseModel):
     orcamento_id: UUID | None = None
     cliente_id: UUID | None = None
     observacoes: str | None = None
+    origem: str = "manual"
 
 
 class ContaResponse(BaseModel):
@@ -112,21 +117,47 @@ class ContaResponse(BaseModel):
     valor: float
     data_vencimento: date
     data_pagamento: date | None
-    status: str
+    status: str  # aberto | parcial | quitado | cancelado
     orcamento_id: UUID | None
     cliente_id: UUID | None
     observacoes: str | None
-    valor_abatimento: float
-    motivo_abatimento: str | None
+    origem: str
     valor_pago: float
+    valor_restante: float
     criado_por: UUID
     criado_em: datetime
 
 
-class PagarContaRequest(BaseModel):
-    data_pagamento: date | None = None
-    valor_abatimento: float = 0
-    motivo_abatimento: str | None = None
+class AbaterContaRequest(BaseModel):
+    valor: float
+    data: date | None = None
+    observacao: str | None = None
+
+
+class PagamentoParcialResponse(BaseModel):
+    id: UUID
+    conta_id: UUID
+    valor: float
+    data: date
+    observacao: str | None
+    operador_id: UUID
+    criado_em: datetime
+
+
+class VisaoGeralLinha(BaseModel):
+    origem: str
+    entradas: float
+    saidas: float
+    saldo: float
+
+
+class VisaoGeralResponse(BaseModel):
+    periodo_inicio: date
+    periodo_fim: date
+    linhas: list[VisaoGeralLinha]
+    total_entradas: float
+    total_saidas: float
+    saldo: float
 
 
 # ── Conversores ───────────────────────────────────────────────────────────────
@@ -140,19 +171,39 @@ def _to_movimento(m: MovimentoCaixaORM) -> MovimentoResponse:
     )
 
 
-def _to_conta(c: ContaORM) -> ContaResponse:
-    abatimento = float(c.valor_abatimento or 0)
+async def _somar_pagamentos(db: AsyncSession, conta_id: str) -> float:
+    result = await db.execute(
+        select(func.coalesce(func.sum(PagamentoParcialORM.valor), 0))
+        .where(PagamentoParcialORM.conta_id == conta_id)
+    )
+    return float(result.scalar() or 0)
+
+
+def _status_conta(c: ContaORM, valor_pago: float) -> str:
+    if c.status == "cancelado":
+        return "cancelado"
+    valor = float(c.valor)
+    if valor_pago <= 0:
+        return "aberto"
+    if valor_pago >= valor - 0.005:  # tolerância 0.5 centavo
+        return "quitado"
+    return "parcial"
+
+
+async def _to_conta(c: ContaORM, db: AsyncSession) -> ContaResponse:
+    valor_pago = await _somar_pagamentos(db, c.id)
+    valor = float(c.valor)
     return ContaResponse(
         id=UUID(c.id), empresa_id=UUID(c.empresa_id), tipo=c.tipo,
-        descricao=c.descricao, parceiro=c.parceiro, valor=float(c.valor),
+        descricao=c.descricao, parceiro=c.parceiro, valor=valor,
         data_vencimento=c.data_vencimento, data_pagamento=c.data_pagamento,
-        status=c.status,
+        status=_status_conta(c, valor_pago),
         orcamento_id=UUID(c.orcamento_id) if c.orcamento_id else None,
         cliente_id=UUID(c.cliente_id) if c.cliente_id else None,
         observacoes=c.observacoes,
-        valor_abatimento=abatimento,
-        motivo_abatimento=c.motivo_abatimento,
-        valor_pago=float(c.valor) - abatimento,
+        origem=c.origem or "manual",
+        valor_pago=round(valor_pago, 2),
+        valor_restante=round(valor - valor_pago, 2),
         criado_por=UUID(c.criado_por), criado_em=c.criado_em,
     )
 
@@ -371,7 +422,8 @@ async def listar_contas(
         limite = date.fromordinal(hoje.toordinal() + vencendo_dias)
         q = q.where(ContaORM.data_vencimento <= limite, ContaORM.status == "pendente")
     result = await db.execute(q.order_by(ContaORM.data_vencimento))
-    return [_to_conta(c) for c in result.scalars()]
+    contas = list(result.scalars())
+    return [await _to_conta(c, db) for c in contas]
 
 
 @router.post("/contas", response_model=ContaResponse, status_code=status.HTTP_201_CREATED)
@@ -389,20 +441,26 @@ async def criar_conta(
         orcamento_id=str(body.orcamento_id) if body.orcamento_id else None,
         cliente_id=str(body.cliente_id) if body.cliente_id else None,
         observacoes=body.observacoes,
+        origem=body.origem,
         criado_por=str(usuario.id), criado_em=datetime.now(UTC),
     )
     db.add(orm)
     await db.flush()
-    return _to_conta(orm)
+    return await _to_conta(orm, db)
 
 
-@router.patch("/contas/{conta_id}/pagar", response_model=ContaResponse)
-async def pagar_conta(
+@router.post("/contas/{conta_id}/abater", response_model=ContaResponse)
+async def abater_conta(
     conta_id: UUID,
-    body: PagarContaRequest,
+    body: AbaterContaRequest,
     usuario: UsuarioAtualDep,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ContaResponse:
+    """Registra abatimento parcial. Valida que valor ≤ valor_restante.
+
+    O valor original da conta NUNCA é alterado. Status é derivado:
+    aberto (sem pagamento) → parcial (0 < pago < valor) → quitado (pago = valor).
+    """
     eid = str(_empresa_id(usuario))
     result = await db.execute(
         select(ContaORM).where(ContaORM.id == str(conta_id), ContaORM.empresa_id == eid)
@@ -410,15 +468,68 @@ async def pagar_conta(
     conta = result.scalar_one_or_none()
     if conta is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
-    abatimento = float(body.valor_abatimento or 0)
-    if abatimento < 0 or abatimento >= float(conta.valor):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Abatimento inválido")
-    conta.status = "pago"
-    conta.data_pagamento = body.data_pagamento or date.today()
-    conta.valor_abatimento = abatimento
-    conta.motivo_abatimento = body.motivo_abatimento
+    if conta.status == "cancelado":
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="Conta cancelada não pode receber pagamento")
+
+    if body.valor <= 0:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Valor do abatimento deve ser maior que zero")
+
+    pago = await _somar_pagamentos(db, conta.id)
+    restante = float(conta.valor) - pago
+    if body.valor > restante + 0.005:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Abatimento de R$ {body.valor:.2f} excede o saldo restante (R$ {restante:.2f})",
+        )
+
+    pagamento = PagamentoParcialORM(
+        id=str(uuid4()), conta_id=conta.id, valor=body.valor,
+        data=body.data or date.today(), observacao=body.observacao,
+        operador_id=str(usuario.id), criado_em=datetime.now(UTC),
+    )
+    db.add(pagamento)
     await db.flush()
-    return _to_conta(conta)
+
+    # Refresh status derivado e marcar data_pagamento se quitou agora
+    novo_pago = pago + body.valor
+    if novo_pago >= float(conta.valor) - 0.005:
+        conta.status = "pago"  # legado: mantém compat
+        conta.data_pagamento = body.data or date.today()
+    else:
+        conta.status = "pendente"  # ainda em aberto/parcial
+        # Não setar data_pagamento até quitar
+    await db.flush()
+
+    return await _to_conta(conta, db)
+
+
+@router.get("/contas/{conta_id}/pagamentos", response_model=list[PagamentoParcialResponse])
+async def listar_pagamentos(
+    conta_id: UUID,
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[PagamentoParcialResponse]:
+    eid = str(_empresa_id(usuario))
+    # Verifica que a conta pertence à empresa
+    conta_result = await db.execute(
+        select(ContaORM).where(ContaORM.id == str(conta_id), ContaORM.empresa_id == eid)
+    )
+    if conta_result.scalar_one_or_none() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+
+    result = await db.execute(
+        select(PagamentoParcialORM)
+        .where(PagamentoParcialORM.conta_id == str(conta_id))
+        .order_by(PagamentoParcialORM.data.desc(), PagamentoParcialORM.criado_em.desc())
+    )
+    return [
+        PagamentoParcialResponse(
+            id=UUID(p.id), conta_id=UUID(p.conta_id), valor=float(p.valor),
+            data=p.data, observacao=p.observacao,
+            operador_id=UUID(p.operador_id), criado_em=p.criado_em,
+        )
+        for p in result.scalars()
+    ]
 
 
 @router.patch("/contas/{conta_id}/cancelar", response_model=ContaResponse)
@@ -436,4 +547,185 @@ async def cancelar_conta(
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     conta.status = "cancelado"
     await db.flush()
-    return _to_conta(conta)
+    return await _to_conta(conta, db)
+
+
+@router.get("/visao-geral", response_model=VisaoGeralResponse)
+async def visao_geral(
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    inicio: date = Query(...),
+    fim: date = Query(...),
+) -> VisaoGeralResponse:
+    """Agrupa entradas e saídas por origem no período (movimentos + contas quitadas)."""
+    eid = str(_empresa_id(usuario))
+
+    mov_result = await db.execute(
+        select(MovimentoCaixaORM).where(
+            MovimentoCaixaORM.empresa_id == eid,
+            MovimentoCaixaORM.data >= inicio,
+            MovimentoCaixaORM.data <= fim,
+        )
+    )
+    by_origem: dict[str, dict[str, float]] = {}
+    for m in mov_result.scalars():
+        org = m.origem or "manual"
+        b = by_origem.setdefault(org, {"entradas": 0.0, "saidas": 0.0})
+        if m.tipo == "entrada":
+            b["entradas"] += float(m.valor)
+        else:
+            b["saidas"] += float(m.valor)
+
+    linhas = [
+        VisaoGeralLinha(origem=org, entradas=round(b["entradas"], 2),
+                        saidas=round(b["saidas"], 2),
+                        saldo=round(b["entradas"] - b["saidas"], 2))
+        for org, b in sorted(by_origem.items())
+    ]
+    total_entradas = sum(l.entradas for l in linhas)
+    total_saidas = sum(l.saidas for l in linhas)
+    return VisaoGeralResponse(
+        periodo_inicio=inicio, periodo_fim=fim, linhas=linhas,
+        total_entradas=round(total_entradas, 2),
+        total_saidas=round(total_saidas, 2),
+        saldo=round(total_entradas - total_saidas, 2),
+    )
+
+
+# ── Relatórios PDF (Fase 4.C) ────────────────────────────────────────────────
+
+async def _empresa_nome(db: AsyncSession, empresa_id: UUID) -> str:
+    from app.identity.infrastructure.orm_models import EmpresaORM
+    result = await db.execute(select(EmpresaORM).where(EmpresaORM.id == str(empresa_id)))
+    emp = result.scalar_one_or_none()
+    return emp.nome if emp else ""
+
+
+@router.get("/dre/pdf")
+async def dre_pdf(
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    inicio: date = Query(...),
+    fim: date = Query(...),
+) -> Response:
+    """DRE em PDF para o período informado."""
+    dre_data = await dre(usuario, db, inicio, fim)  # type: ignore[arg-type]
+    pdf = gerar_pdf_dre(dre_data, empresa_nome=await _empresa_nome(db, _empresa_id(usuario)))
+    return Response(
+        content=pdf, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="dre-{inicio}_{fim}.pdf"'},
+    )
+
+
+@router.get("/contas/aging/pdf")
+async def aging_pdf(
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tipo: str = Query("receber", description="receber | pagar"),
+) -> Response:
+    """Aging de recebíveis ou pagáveis em PDF (em aberto / parciais, não quitadas)."""
+    eid = str(_empresa_id(usuario))
+    result = await db.execute(
+        select(ContaORM).where(
+            ContaORM.empresa_id == eid,
+            ContaORM.tipo == tipo,
+            ContaORM.status != "cancelado",
+        ).order_by(ContaORM.data_vencimento)
+    )
+    contas = list(result.scalars())
+    # Calcular restante via SUM de pagamentos parciais
+    abertas = []
+    for c in contas:
+        pago = await _somar_pagamentos(db, c.id)
+        restante = float(c.valor) - pago
+        if restante > 0.005:
+            # Decoração com atributo dinâmico — pdf_service lê _restante
+            c._restante = round(restante, 2)  # type: ignore[attr-defined]
+            abertas.append(c)
+
+    pdf = gerar_pdf_aging(abertas, tipo=tipo, empresa_nome=await _empresa_nome(db, _empresa_id(usuario)))
+    return Response(
+        content=pdf, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="aging-{tipo}.pdf"'},
+    )
+
+
+@router.get("/extrato/pdf")
+async def extrato_pdf(
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    inicio: date | None = Query(None),
+    fim: date | None = Query(None),
+    categoria: str | None = Query(None),
+    origem: str | None = Query(None),
+    tipo: str | None = Query(None),
+) -> Response:
+    """Extrato de movimentos com filtros (categoria, origem, tipo, período)."""
+    eid = str(_empresa_id(usuario))
+    q = select(MovimentoCaixaORM).where(MovimentoCaixaORM.empresa_id == eid)
+    if inicio:
+        q = q.where(MovimentoCaixaORM.data >= inicio)
+    if fim:
+        q = q.where(MovimentoCaixaORM.data <= fim)
+    if categoria:
+        q = q.where(MovimentoCaixaORM.categoria == categoria)
+    if origem:
+        q = q.where(MovimentoCaixaORM.origem == origem)
+    if tipo:
+        q = q.where(MovimentoCaixaORM.tipo == tipo)
+    result = await db.execute(q.order_by(MovimentoCaixaORM.data.asc()))
+    movimentos = list(result.scalars())
+
+    filtros = {"Tipo": tipo or "", "Categoria": categoria or "", "Origem": origem or ""}
+    pdf = gerar_pdf_extrato(
+        movimentos, inicio=inicio, fim=fim, filtros=filtros,
+        empresa_nome=await _empresa_nome(db, _empresa_id(usuario)),
+    )
+    return Response(
+        content=pdf, media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="extrato.pdf"'},
+    )
+
+
+@router.get("/extrato/csv")
+async def extrato_csv(
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    inicio: date | None = Query(None),
+    fim: date | None = Query(None),
+    categoria: str | None = Query(None),
+    origem: str | None = Query(None),
+    tipo: str | None = Query(None),
+) -> Response:
+    """Mesmo extrato em CSV (UTF-8 com BOM, separador ;)."""
+    import csv as _csv
+    import io as _io
+    eid = str(_empresa_id(usuario))
+    q = select(MovimentoCaixaORM).where(MovimentoCaixaORM.empresa_id == eid)
+    if inicio:
+        q = q.where(MovimentoCaixaORM.data >= inicio)
+    if fim:
+        q = q.where(MovimentoCaixaORM.data <= fim)
+    if categoria:
+        q = q.where(MovimentoCaixaORM.categoria == categoria)
+    if origem:
+        q = q.where(MovimentoCaixaORM.origem == origem)
+    if tipo:
+        q = q.where(MovimentoCaixaORM.tipo == tipo)
+    result = await db.execute(q.order_by(MovimentoCaixaORM.data.asc()))
+    buf = _io.StringIO()
+    writer = _csv.writer(buf, delimiter=";", quoting=_csv.QUOTE_MINIMAL)
+    writer.writerow(["Data", "Tipo", "Categoria", "Origem", "Descrição", "Valor"])
+    for m in result.scalars():
+        writer.writerow([
+            m.data.strftime("%d/%m/%Y"),
+            m.tipo, m.categoria, m.origem or "manual",
+            m.descricao,
+            f"{float(m.valor):.2f}".replace(".", ","),
+        ])
+    body = "﻿" + buf.getvalue()  # UTF-8 BOM para Excel reconhecer acentos
+    return Response(
+        content=body.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="extrato.csv"'},
+    )

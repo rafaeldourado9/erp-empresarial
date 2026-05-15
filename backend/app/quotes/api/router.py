@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.identity.api.deps import UsuarioAtualDep
+from app.identity.domain.constants import PerfilUsuario
 from app.infrastructure.database import get_db
 from app.quotes.api.schemas import (
     CalcularOrcamentoRequest, CalcularOrcamentoResponse,
@@ -90,6 +91,14 @@ def _empresa_id(usuario: UsuarioAtualDep) -> UUID:
     return usuario.empresa_id
 
 
+def _exigir_admin(usuario: UsuarioAtualDep) -> None:
+    if usuario.perfil not in (PerfilUsuario.ADMIN_GRUPO, PerfilUsuario.ADMIN_EMPRESA):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Apenas administradores podem gerenciar premissas",
+        )
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _premissa_to_response(p: object) -> PremissaOrcamentoResponse:
@@ -99,6 +108,7 @@ def _premissa_to_response(p: object) -> PremissaOrcamentoResponse:
         nome=p.nome, descricao=p.descricao, tipo=p.tipo,
         valor=float(p.valor), valor_calculado=float(p.valor_calculado),
         ordem=p.ordem,
+        obrigatoria=bool(getattr(p, "obrigatoria", False)),
     )
 
 
@@ -141,16 +151,19 @@ async def _resolver_premissa(
     req: PremissaOrcamentoRequest,
     premissa_repo: PremissaRepository,
     empresa_id: UUID,
-) -> tuple[UUID | None, str, str | None, str, float]:
+) -> tuple[UUID | None, str, str | None, str, float, bool]:
     if req.premissa_id:
         template = await premissa_repo.buscar_por_id(req.premissa_id, empresa_id)
         if template is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Premissa {req.premissa_id} não encontrada")
-        return req.premissa_id, template.nome, template.descricao, template.tipo, float(template.valor)
+        return (
+            req.premissa_id, template.nome, template.descricao,
+            template.tipo, float(template.valor), bool(template.obrigatoria),
+        )
     if not req.nome or not req.tipo or req.valor is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail="Informe premissa_id ou (nome, tipo, valor)")
-    return None, req.nome, req.descricao, req.tipo, req.valor
+    return None, req.nome, req.descricao, req.tipo, req.valor, False
 
 
 async def _salvar_premissas_e_itens(
@@ -173,15 +186,27 @@ async def _salvar_premissas_e_itens(
                 )
             ids_usados.add(pid_str)
 
+    # Forçar inclusão das premissas obrigatórias da empresa.
+    # Operador não pode remover — se faltar, prepende automaticamente.
+    obrigatorias = await premissa_repo.listar_obrigatorias(empresa_id)
+    obrigatorias_a_adicionar = [
+        o for o in obrigatorias if str(o.id) not in ids_usados
+    ]
+    if obrigatorias_a_adicionar:
+        premissas_req = [
+            PremissaOrcamentoRequest(premissa_id=UUID(o.id), ordem=i)
+            for i, o in enumerate(obrigatorias_a_adicionar)
+        ] + list(premissas_req)
+
     premissas_calc: list[PremissaCalculo] = []
-    premissas_resolvidas = []
+    premissas_resolvidas: list[tuple[UUID | None, str, str | None, str, float, int, bool]] = []
     for idx, p_req in enumerate(premissas_req):
-        pid, nome, desc, tipo, valor = await _resolver_premissa(p_req, premissa_repo, empresa_id)
+        pid, nome, desc, tipo, valor, obrig = await _resolver_premissa(p_req, premissa_repo, empresa_id)
         premissas_calc.append(PremissaCalculo(
             id=str(idx), nome=nome, descricao=desc, tipo=tipo, valor=valor,
             ordem=p_req.ordem or idx,
         ))
-        premissas_resolvidas.append((pid, nome, desc, tipo, valor, p_req.ordem or idx))
+        premissas_resolvidas.append((pid, nome, desc, tipo, valor, p_req.ordem or idx, obrig))
 
     itens_calc: list[ItemCalculo] = []
     for idx, i_req in enumerate(itens_req):
@@ -193,9 +218,9 @@ async def _salvar_premissas_e_itens(
 
     calc = calcular(custo_base, premissas_calc, itens_calc, valor_venda)
 
-    for idx, (pid, nome, desc, tipo, valor, ordem) in enumerate(premissas_resolvidas):
+    for idx, (pid, nome, desc, tipo, valor, ordem, obrig) in enumerate(premissas_resolvidas):
         vc = calc.premissas[idx]["valor_calculado"]
-        await repo.criar_premissa(orc_id, pid, nome, desc, tipo, valor, vc, ordem)
+        await repo.criar_premissa(orc_id, pid, nome, desc, tipo, valor, vc, ordem, obrigatoria=obrig)
 
     for idx, (i_req, i_calc) in enumerate(zip(itens_req, calc.itens)):
         await repo.criar_item(
@@ -219,6 +244,7 @@ async def listar_premissas(
     return [PremissaResponse(
         id=UUID(p.id), nome=p.nome, descricao=p.descricao,
         tipo=p.tipo, valor=float(p.valor), ordem=p.ordem, ativo=p.ativo,
+        obrigatoria=bool(p.obrigatoria),
     ) for p in premissas]
 
 
@@ -228,11 +254,14 @@ async def criar_premissa(
     usuario: UsuarioAtualDep,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> PremissaResponse:
+    _exigir_admin(usuario)
     p = await PremissaRepository(db).criar(
         _empresa_id(usuario), body.nome, body.tipo, body.valor, body.ordem, body.descricao,
+        obrigatoria=body.obrigatoria,
     )
     return PremissaResponse(id=UUID(p.id), nome=p.nome, descricao=p.descricao,
-                            tipo=p.tipo, valor=float(p.valor), ordem=p.ordem, ativo=p.ativo)
+                            tipo=p.tipo, valor=float(p.valor), ordem=p.ordem, ativo=p.ativo,
+                            obrigatoria=bool(p.obrigatoria))
 
 
 @router.put("/premissas/{premissa_id}", response_model=PremissaResponse)
@@ -242,6 +271,7 @@ async def atualizar_premissa(
     usuario: UsuarioAtualDep,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> PremissaResponse:
+    _exigir_admin(usuario)
     repo = PremissaRepository(db)
     p = await repo.buscar_por_id(premissa_id, _empresa_id(usuario))
     if p is None:
@@ -251,9 +281,11 @@ async def atualizar_premissa(
     p.tipo = body.tipo
     p.valor = body.valor
     p.ordem = body.ordem
+    p.obrigatoria = body.obrigatoria
     await repo.salvar(p)
     return PremissaResponse(id=UUID(p.id), nome=p.nome, descricao=p.descricao,
-                            tipo=p.tipo, valor=float(p.valor), ordem=p.ordem, ativo=p.ativo)
+                            tipo=p.tipo, valor=float(p.valor), ordem=p.ordem, ativo=p.ativo,
+                            obrigatoria=bool(p.obrigatoria))
 
 
 @router.delete("/premissas/{premissa_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -262,6 +294,7 @@ async def deletar_premissa(
     usuario: UsuarioAtualDep,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
+    _exigir_admin(usuario)
     repo = PremissaRepository(db)
     p = await repo.buscar_por_id(premissa_id, _empresa_id(usuario))
     if p is None:
@@ -283,7 +316,7 @@ async def calcular_orcamento(
 
     premissas_calc: list[PremissaCalculo] = []
     for idx, p_req in enumerate(body.premissas):
-        pid, nome, desc, tipo, valor = await _resolver_premissa(p_req, premissa_repo, empresa_id)
+        pid, nome, desc, tipo, valor, _obrig = await _resolver_premissa(p_req, premissa_repo, empresa_id)
         premissas_calc.append(PremissaCalculo(
             id=str(idx), nome=nome, descricao=desc, tipo=tipo, valor=valor,
             ordem=p_req.ordem or idx,
@@ -472,12 +505,14 @@ async def aprovar_orcamento(
     orc.aprovado_em = datetime.now(UTC)
     await repo.salvar(orc)
 
+    from sqlalchemy import select
+    from uuid import uuid4
+    from datetime import date as _date
+
     # Auto-criar comissão se houver vendedor atribuído
     if orc.vendedor_id:
-        from sqlalchemy import select
         from app.identity.infrastructure.orm_models import UsuarioORM
         from app.commissions.infrastructure.orm_models import ComissaoORM
-        from uuid import uuid4
         vendedor = (await db.execute(
             select(UsuarioORM).where(UsuarioORM.id == orc.vendedor_id)
         )).scalar_one_or_none()
@@ -499,6 +534,32 @@ async def aprovar_orcamento(
             )
             db.add(comissao)
             await db.flush()
+
+    # Auto-criar conta a receber com origem=orcamento (Fase 4.A)
+    from app.finance.infrastructure.orm_models import ContaORM
+    from app.clients.infrastructure.orm_models import ClienteORM
+    cliente_nome = None
+    if orc.cliente_id:
+        cli = (await db.execute(
+            select(ClienteORM).where(ClienteORM.id == orc.cliente_id)
+        )).scalar_one_or_none()
+        cliente_nome = cli.nome if cli else None
+    venc = _date.fromordinal(_date.today().toordinal() + (orc.validade_dias or 30))
+    conta = ContaORM(
+        id=str(uuid4()), empresa_id=orc.empresa_id, tipo="receber",
+        descricao=f"Orçamento {orc.numero} — {orc.titulo}",
+        parceiro=cliente_nome,
+        valor=float(orc.valor_venda),
+        data_vencimento=venc,
+        status="pendente",
+        orcamento_id=orc.id,
+        cliente_id=orc.cliente_id,
+        observacoes=f"Auto-criada pela aprovação do orçamento {orc.numero}",
+        origem="orcamento",
+        criado_por=str(usuario.id), criado_em=datetime.now(UTC),
+    )
+    db.add(conta)
+    await db.flush()
 
     return await _orc_to_response(orc, repo)
 
@@ -956,14 +1017,17 @@ async def adicionar_premissa(
                 detail="Esta premissa já foi adicionada ao orçamento",
             )
 
-    pid, nome, desc, tipo, valor = await _resolver_premissa(body, PremissaRepository(db), empresa_id)
+    pid, nome, desc, tipo, valor, obrig = await _resolver_premissa(body, PremissaRepository(db), empresa_id)
     from app.quotes.application.calculator import PremissaCalculo, calcular
     p_calc = PremissaCalculo(id="0", nome=nome, descricao=desc, tipo=tipo, valor=valor, ordem=0)
     result = calcular(float(orc.custo_base), [p_calc], [], None)
     vc = result.premissas[0]["valor_calculado"]
 
     existentes = await repo.listar_premissas(orc_id)
-    orm = await repo.criar_premissa(orc_id, pid, nome, desc, tipo, valor, vc, body.ordem or len(existentes))
+    orm = await repo.criar_premissa(
+        orc_id, pid, nome, desc, tipo, valor, vc,
+        body.ordem or len(existentes), obrigatoria=obrig,
+    )
     return _premissa_to_response(orm)
 
 
@@ -978,6 +1042,13 @@ async def remover_premissa(
     orc = await repo.buscar_por_id(orc_id, _empresa_id(usuario))
     if orc is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Orçamento não encontrado")
+    aplicadas = await repo.listar_premissas(orc_id)
+    alvo = next((p for p in aplicadas if p.id == str(premissa_orc_id)), None)
+    if alvo is not None and bool(getattr(alvo, "obrigatoria", False)):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Premissa obrigatória não pode ser removida",
+        )
     await repo.deletar_premissa(premissa_orc_id)
 
 

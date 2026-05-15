@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
-import { Plus, Eye, CheckCircle, XCircle, Send, FileText, Download, FileDown } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Plus, Eye, CheckCircle, XCircle, Send, Download, Inbox } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { orcamentosApi } from '../../api/quotes'
+import { TableRowsSkeleton } from '../../components/ui/Skeleton'
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
 
@@ -25,7 +26,6 @@ export function Orcamentos() {
   const [orcamentos, setOrcamentos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filtroStatus, setFiltroStatus] = useState('')
-  const templateInputRef = useRef<HTMLInputElement>(null)
 
   const carregar = () => {
     setLoading(true)
@@ -52,14 +52,19 @@ export function Orcamentos() {
     carregar()
   }
 
-  const handleUploadTemplate = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const handleBaixarPdf = async (id: string, numero: string) => {
     try {
-      await orcamentosApi.uploadTemplate(file)
-      alert('Template enviado com sucesso!')
-    } catch {
-      alert('Erro ao enviar template')
+      const blob = await orcamentosApi.baixarPdf(id)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `orcamento-${numero}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Erro ao gerar PDF')
     }
   }
 
@@ -67,31 +72,13 @@ export function Orcamentos() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Orçamentos</h1>
-        <div className="flex gap-2">
-          <a
-            href={orcamentosApi.urlTemplateExemplo()}
-            download="modelo-proposta-comercial.docx"
-            className="flex items-center gap-2 border border-gray-200 hover:bg-gray-50 text-gray-600 px-3 py-2 rounded-lg text-sm"
-            title="Baixar modelo de proposta comercial (.docx)"
-          >
-            <FileDown className="w-4 h-4" /> Baixar Modelo
-          </a>
-          <button
-            onClick={() => templateInputRef.current?.click()}
-            className="flex items-center gap-2 border border-gray-200 hover:bg-gray-50 text-gray-600 px-3 py-2 rounded-lg text-sm"
-            title="Enviar template DOCX personalizado"
-          >
-            <FileText className="w-4 h-4" /> Enviar Template
-          </button>
-          <input ref={templateInputRef} type="file" accept=".docx" className="hidden" onChange={handleUploadTemplate} />
-          <Link
-            to="/orcamentos/novo"
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Novo Orçamento
-          </Link>
-        </div>
+        <Link
+          to="/orcamentos/novo"
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Novo Orçamento
+        </Link>
       </div>
 
       <div className="flex gap-2 mb-4 flex-wrap">
@@ -121,11 +108,14 @@ export function Orcamentos() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {loading && (
-              <tr><td colSpan={6} className="text-center py-8 text-gray-400">Carregando...</td></tr>
-            )}
+            {loading && <TableRowsSkeleton rows={6} cols={6} />}
             {!loading && orcamentos.length === 0 && (
-              <tr><td colSpan={6} className="text-center py-8 text-gray-400">Nenhum orçamento encontrado</td></tr>
+              <tr>
+                <td colSpan={6} className="text-center py-12 text-zinc-400">
+                  <Inbox className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm">Nenhum orçamento encontrado</p>
+                </td>
+              </tr>
             )}
             {orcamentos.map(o => {
               const sc = STATUS_CONFIG[o.status] ?? { label: o.status, cls: 'bg-gray-100 text-gray-600' }
@@ -145,15 +135,13 @@ export function Orcamentos() {
                       <Link to={`/orcamentos/${o.id}`} className="p-1 text-gray-400 hover:text-blue-600" title="Editar">
                         <Eye className="w-4 h-4" />
                       </Link>
-                      <a
-                        href={orcamentosApi.urlPdf(o.id)}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => handleBaixarPdf(o.id, o.numero)}
                         className="p-1 text-gray-400 hover:text-red-500"
                         title="Baixar PDF"
                       >
                         <Download className="w-4 h-4" />
-                      </a>
+                      </button>
                       {o.status === 'rascunho' && (
                         <button onClick={() => handleEnviar(o.id)} className="p-1 text-gray-400 hover:text-blue-600" title="Enviar">
                           <Send className="w-4 h-4" />

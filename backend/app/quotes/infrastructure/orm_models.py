@@ -19,6 +19,7 @@ class PremissaORM(Base):
     valor: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False)
     ordem: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    obrigatoria: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
@@ -64,6 +65,7 @@ class PremissaOrcamentoORM(Base):
     valor: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False)
     valor_calculado: Mapped[float] = mapped_column(Numeric(15, 2), nullable=False, default=0)
     ordem: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    obrigatoria: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class ItemOrcamentoORM(Base):

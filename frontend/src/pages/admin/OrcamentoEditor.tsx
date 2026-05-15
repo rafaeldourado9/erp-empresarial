@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Plus, Trash2, Calculator, ArrowLeft, ChevronDown } from 'lucide-react'
+import { Plus, Trash2, Calculator, ArrowLeft, ChevronDown, Check } from 'lucide-react'
 import { orcamentosApi, premissasApi } from '../../api/quotes'
 import { clientesApi } from '../../api/clients'
 import { operadoresApi } from '../../api/operators'
@@ -483,8 +483,8 @@ export function OrcamentoEditor() {
                               usado ? 'opacity-40 cursor-not-allowed' : 'hover:bg-zinc-50'
                             }`}>
                             <span className="text-zinc-800">{t.nome}</span>
-                            <span className="text-zinc-500">
-                              {usado ? '✓' : `${t.valor}${t.tipo === 'percentual' ? '%' : ' R$'}`}
+                            <span className="text-zinc-500 inline-flex items-center">
+                              {usado ? <Check className="w-3 h-3 text-green-600" /> : `${t.valor}${t.tipo === 'percentual' ? '%' : ' R$'}`}
                             </span>
                           </button>
                         )

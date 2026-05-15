@@ -58,19 +58,27 @@ export function Configuracoes() {
 
   // ── Premissas handlers ────────────────────────────────────────────────────────
   const salvarPremissa = async () => {
-    if (modalPremissa.id) {
-      await premissasApi.atualizar(modalPremissa.id, modalPremissa)
-    } else {
-      await premissasApi.criar(modalPremissa)
+    try {
+      if (modalPremissa.id) {
+        await premissasApi.atualizar(modalPremissa.id, modalPremissa)
+      } else {
+        await premissasApi.criar(modalPremissa)
+      }
+      setModalPremissa(null)
+      carregarPremissas()
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Erro ao salvar premissa')
     }
-    setModalPremissa(null)
-    carregarPremissas()
   }
 
   const deletarPremissa = async (id: string) => {
     if (!confirm('Remover premissa? Orçamentos que a usam não serão afetados.')) return
-    await premissasApi.deletar(id)
-    carregarPremissas()
+    try {
+      await premissasApi.deletar(id)
+      carregarPremissas()
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Erro ao remover premissa')
+    }
   }
 
   const salvarConfig = async () => {
@@ -92,6 +100,22 @@ export function Configuracoes() {
     } finally {
       setUploadingTemplate(false)
       e.target.value = ''
+    }
+  }
+
+  const handleBaixarModelo = async () => {
+    try {
+      const blob = await orcamentosApi.baixarTemplateExemplo()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'modelo-proposta-comercial.docx'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch {
+      alert('Erro ao baixar modelo')
     }
   }
 
@@ -167,17 +191,23 @@ export function Configuracoes() {
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Nome</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Descrição</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Valor</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Obrigatória</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {loadingPremissas && <tr><td colSpan={4} className="text-center py-8 text-gray-400">Carregando...</td></tr>}
-                {!loadingPremissas && premissas.length === 0 && <tr><td colSpan={4} className="text-center py-8 text-gray-400">Nenhuma premissa cadastrada</td></tr>}
+                {loadingPremissas && <tr><td colSpan={5} className="text-center py-8 text-gray-400">Carregando...</td></tr>}
+                {!loadingPremissas && premissas.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-gray-400">Nenhuma premissa cadastrada</td></tr>}
                 {premissas.map(p => (
                   <tr key={p.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-800">{p.nome}</td>
                     <td className="px-4 py-3 text-gray-600">{p.descricao || '—'}</td>
                     <td className="px-4 py-3 text-gray-700 font-medium">{p.valor}%</td>
+                    <td className="px-4 py-3">
+                      {p.obrigatoria
+                        ? <span className="badge-amber"><Lock className="w-3 h-3" /> Obrigatória</span>
+                        : <span className="text-xs text-gray-400">—</span>}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
                         <button onClick={() => setModalPremissa({ ...p })} className="p-1 text-gray-400 hover:text-blue-600"><Pencil className="w-4 h-4" /></button>
@@ -238,10 +268,10 @@ export function Configuracoes() {
                 <Upload className="w-4 h-4" />
                 {uploadingTemplate ? 'Enviando...' : 'Enviar Template (.docx)'}
               </button>
-              <a href="/api/v1/orcamentos/template/exemplo" download
+              <button onClick={handleBaixarModelo}
                 className="flex items-center gap-2 border text-gray-600 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium">
                 <Download className="w-4 h-4" /> Baixar Modelo de Exemplo
-              </a>
+              </button>
             </div>
             {templateOk && (
               <p className="mt-3 text-sm text-green-600 font-medium">Template enviado com sucesso.</p>
@@ -350,6 +380,20 @@ export function Configuracoes() {
                   onChange={e => setModalPremissa((m: any) => ({ ...m, valor: +e.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
+              <label className="flex items-start gap-2 cursor-pointer p-3 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={!!modalPremissa.obrigatoria}
+                  onChange={e => setModalPremissa((m: any) => ({ ...m, obrigatoria: e.target.checked }))}
+                  className="mt-0.5 w-4 h-4 accent-amber-500"
+                />
+                <div className="text-xs">
+                  <p className="font-semibold text-amber-800">Marcar como obrigatória</p>
+                  <p className="text-amber-700 mt-0.5">
+                    Será aplicada automaticamente em todos os orçamentos novos e o operador não poderá removê-la. Somente admins podem alterar essa flag.
+                  </p>
+                </div>
+              </label>
             </div>
             <div className="flex gap-2 mt-4">
               <button onClick={() => setModalPremissa(null)} className="flex-1 border py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>

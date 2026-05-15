@@ -335,6 +335,37 @@ INVERSORES: list[InversorSolar] = [
 
     # ── SMA Central ── Central ────────────────────────────────────────────────
     {"id":"sma-sc-200k","marca":"SMA","modelo":"Sunny Central 200 Central","potencia_kw":200.0,"tipo":"central","fases":3,"eficiencia_max":98.7,"tensao_mppt_min":400,"tensao_mppt_max":900,"num_mppt":1,"corrente_cc_max":800.0,"tensao_saida_v":380,"garantia_anos":5,"comunicacao":"LAN/RS485","certificacoes":"CE/IEC"},
+
+    # ── Solis ── String Mono 220V (S5-GR1P / S6-GR1P) ───────────────────────
+    {"id":"solis-s6-gr1p-2k","marca":"Solis","modelo":"S6-GR1P2K Mono 220V","potencia_kw":2.0,"tipo":"string","fases":1,"eficiencia_max":97.3,"tensao_mppt_min":80,"tensao_mppt_max":500,"num_mppt":1,"corrente_cc_max":14.0,"tensao_saida_v":220,"garantia_anos":10,"comunicacao":"WiFi/RS485","certificacoes":"INMETRO/CE/IEC"},
+    {"id":"solis-s6-gr1p-3k","marca":"Solis","modelo":"S6-GR1P3K Mono 220V","potencia_kw":3.0,"tipo":"string","fases":1,"eficiencia_max":97.5,"tensao_mppt_min":80,"tensao_mppt_max":500,"num_mppt":1,"corrente_cc_max":14.0,"tensao_saida_v":220,"garantia_anos":10,"comunicacao":"WiFi/RS485","certificacoes":"INMETRO/CE/IEC"},
+    {"id":"solis-s6-gr1p-5k","marca":"Solis","modelo":"S6-GR1P5K Mono 220V","potencia_kw":5.0,"tipo":"string","fases":1,"eficiencia_max":97.7,"tensao_mppt_min":90,"tensao_mppt_max":520,"num_mppt":2,"corrente_cc_max":16.0,"tensao_saida_v":220,"garantia_anos":10,"comunicacao":"WiFi/RS485","certificacoes":"INMETRO/CE/IEC"},
+
+    # ── Solis ── String Tri 220V (S5-GR3P / S6-GR3P) ────────────────────────
+    {"id":"solis-s6-gr3p-5k","marca":"Solis","modelo":"S6-GR3P5K Tri 220V","potencia_kw":5.0,"tipo":"string","fases":3,"eficiencia_max":98.5,"tensao_mppt_min":90,"tensao_mppt_max":550,"num_mppt":2,"corrente_cc_max":16.0,"tensao_saida_v":220,"garantia_anos":10,"comunicacao":"WiFi/RS485","certificacoes":"INMETRO/CE/IEC"},
+    {"id":"solis-s6-gr3p-8k","marca":"Solis","modelo":"S6-GR3P8K Tri 220V","potencia_kw":8.0,"tipo":"string","fases":3,"eficiencia_max":98.6,"tensao_mppt_min":90,"tensao_mppt_max":550,"num_mppt":2,"corrente_cc_max":21.0,"tensao_saida_v":220,"garantia_anos":10,"comunicacao":"WiFi/RS485","certificacoes":"INMETRO/CE/IEC"},
+    {"id":"solis-s6-gr3p-10k","marca":"Solis","modelo":"S6-GR3P10K Tri 220V","potencia_kw":10.0,"tipo":"string","fases":3,"eficiencia_max":98.7,"tensao_mppt_min":90,"tensao_mppt_max":550,"num_mppt":2,"corrente_cc_max":21.0,"tensao_saida_v":220,"garantia_anos":10,"comunicacao":"WiFi/RS485","certificacoes":"INMETRO/CE/IEC"},
+    {"id":"solis-s5-gr3p-12k","marca":"Solis","modelo":"S5-GR3P12K Tri 220V","potencia_kw":12.0,"tipo":"string","fases":3,"eficiencia_max":98.7,"tensao_mppt_min":200,"tensao_mppt_max":1000,"num_mppt":2,"corrente_cc_max":26.0,"tensao_saida_v":220,"garantia_anos":10,"comunicacao":"WiFi/RS485","certificacoes":"INMETRO/CE/IEC"},
+    {"id":"solis-s5-gr3p-15k","marca":"Solis","modelo":"S5-GR3P15K Tri 220V","potencia_kw":15.0,"tipo":"string","fases":3,"eficiencia_max":98.8,"tensao_mppt_min":200,"tensao_mppt_max":1000,"num_mppt":2,"corrente_cc_max":26.0,"tensao_saida_v":220,"garantia_anos":10,"comunicacao":"WiFi/RS485","certificacoes":"INMETRO/CE/IEC"},
+
+    # ── Solis ── String Tri 380V (S5-GC / S6-GU) ────────────────────────────
+    {"id":"solis-s5-gc-20k","marca":"Solis","modelo":"S5-GC20K Tri 380V","potencia_kw":20.0,"tipo":"string","fases":3,"eficiencia_max":98.7,"tensao_mppt_min":180,"tensao_mppt_max":1000,"num_mppt":3,"corrente_cc_max":26.0,"tensao_saida_v":380,"garantia_anos":10,"comunicacao":"WiFi/RS485","certificacoes":"INMETRO/CE/IEC"},
+    {"id":"solis-s5-gc-25k","marca":"Solis","modelo":"S5-GC25K Tri 380V","potencia_kw":25.0,"tipo":"string","fases":3,"eficiencia_max":98.7,"tensao_mppt_min":180,"tensao_mppt_max":1000,"num_mppt":3,"corrente_cc_max":26.0,"tensao_saida_v":380,"garantia_anos":10,"comunicacao":"WiFi/RS485","certificacoes":"INMETRO/CE/IEC"},
+    {"id":"solis-s5-gc-30k","marca":"Solis","modelo":"S5-GC30K Tri 380V","potencia_kw":30.0,"tipo":"string","fases":3,"eficiencia_max":98.8,"tensao_mppt_min":180,"tensao_mppt_max":1000,"num_mppt":4,"corrente_cc_max":26.0,"tensao_saida_v":380,"garantia_anos":10,"comunicacao":"WiFi/RS485","certificacoes":"INMETRO/CE/IEC"},
+    {"id":"solis-s5-gc-50k","marca":"Solis","modelo":"S5-GC50K Tri 380V","potencia_kw":50.0,"tipo":"string","fases":3,"eficiencia_max":98.8,"tensao_mppt_min":200,"tensao_mppt_max":1100,"num_mppt":5,"corrente_cc_max":32.0,"tensao_saida_v":380,"garantia_anos":10,"comunicacao":"RS485/LAN","certificacoes":"INMETRO/CE/IEC"},
+    {"id":"solis-s6-gc-60k","marca":"Solis","modelo":"S6-GC60K Tri 380V","potencia_kw":60.0,"tipo":"string","fases":3,"eficiencia_max":98.8,"tensao_mppt_min":200,"tensao_mppt_max":1100,"num_mppt":6,"corrente_cc_max":32.0,"tensao_saida_v":380,"garantia_anos":10,"comunicacao":"RS485/LAN","certificacoes":"INMETRO/CE/IEC"},
+    {"id":"solis-s6-gc-80k","marca":"Solis","modelo":"S6-GC80K Tri 380V","potencia_kw":80.0,"tipo":"string","fases":3,"eficiencia_max":98.8,"tensao_mppt_min":200,"tensao_mppt_max":1100,"num_mppt":8,"corrente_cc_max":32.0,"tensao_saida_v":380,"garantia_anos":10,"comunicacao":"RS485/LAN","certificacoes":"CE/IEC"},
+    {"id":"solis-s6-gc-100k","marca":"Solis","modelo":"S6-GC100K Tri 380V","potencia_kw":100.0,"tipo":"string","fases":3,"eficiencia_max":98.8,"tensao_mppt_min":200,"tensao_mppt_max":1100,"num_mppt":10,"corrente_cc_max":32.0,"tensao_saida_v":380,"garantia_anos":10,"comunicacao":"RS485/LAN","certificacoes":"CE/IEC"},
+
+    # ── Solis ── Híbrido Mono 220V (S6-EH1P) ────────────────────────────────
+    {"id":"solis-s6-eh1p-3k","marca":"Solis","modelo":"S6-EH1P3K-L Híbrido Mono","potencia_kw":3.0,"tipo":"hibrido","fases":1,"eficiencia_max":97.5,"tensao_mppt_min":90,"tensao_mppt_max":520,"num_mppt":2,"corrente_cc_max":16.0,"tensao_saida_v":220,"garantia_anos":10,"comunicacao":"WiFi/RS485","certificacoes":"CE/IEC"},
+    {"id":"solis-s6-eh1p-5k","marca":"Solis","modelo":"S6-EH1P5K-L Híbrido Mono","potencia_kw":5.0,"tipo":"hibrido","fases":1,"eficiencia_max":97.7,"tensao_mppt_min":90,"tensao_mppt_max":520,"num_mppt":2,"corrente_cc_max":16.0,"tensao_saida_v":220,"garantia_anos":10,"comunicacao":"WiFi/RS485","certificacoes":"CE/IEC"},
+    {"id":"solis-s6-eh1p-6k","marca":"Solis","modelo":"S6-EH1P6K-L Híbrido Mono","potencia_kw":6.0,"tipo":"hibrido","fases":1,"eficiencia_max":97.7,"tensao_mppt_min":90,"tensao_mppt_max":520,"num_mppt":2,"corrente_cc_max":16.0,"tensao_saida_v":220,"garantia_anos":10,"comunicacao":"WiFi/RS485","certificacoes":"CE/IEC"},
+
+    # ── Solis ── Híbrido Tri (S6-EH3P) ──────────────────────────────────────
+    {"id":"solis-s6-eh3p-5k","marca":"Solis","modelo":"S6-EH3P5K-H Híbrido Tri","potencia_kw":5.0,"tipo":"hibrido","fases":3,"eficiencia_max":97.8,"tensao_mppt_min":200,"tensao_mppt_max":850,"num_mppt":2,"corrente_cc_max":16.0,"tensao_saida_v":380,"garantia_anos":10,"comunicacao":"WiFi/RS485","certificacoes":"CE/IEC"},
+    {"id":"solis-s6-eh3p-10k","marca":"Solis","modelo":"S6-EH3P10K-H Híbrido Tri","potencia_kw":10.0,"tipo":"hibrido","fases":3,"eficiencia_max":98.0,"tensao_mppt_min":200,"tensao_mppt_max":850,"num_mppt":2,"corrente_cc_max":25.0,"tensao_saida_v":380,"garantia_anos":10,"comunicacao":"WiFi/RS485","certificacoes":"CE/IEC"},
+    {"id":"solis-s6-eh3p-15k","marca":"Solis","modelo":"S6-EH3P15K-L Híbrido Tri","potencia_kw":15.0,"tipo":"hibrido","fases":3,"eficiencia_max":98.0,"tensao_mppt_min":200,"tensao_mppt_max":850,"num_mppt":2,"corrente_cc_max":25.0,"tensao_saida_v":380,"garantia_anos":10,"comunicacao":"WiFi/RS485","certificacoes":"CE/IEC"},
 ]
 
 # ---------------------------------------------------------------------------
@@ -364,7 +395,7 @@ def filtrar_modulos(tipo: str | None = None, potencia_min: int | None = None, po
     return result
 
 
-def filtrar_inversores(tipo: str | None = None, potencia_min: float | None = None, potencia_max: float | None = None, fases: int | None = None) -> list[InversorSolar]:
+def filtrar_inversores(tipo: str | None = None, potencia_min: float | None = None, potencia_max: float | None = None, fases: int | None = None, marca: str | None = None) -> list[InversorSolar]:
     result = INVERSORES
     if tipo:
         result = [i for i in result if i["tipo"] == tipo]
@@ -374,4 +405,83 @@ def filtrar_inversores(tipo: str | None = None, potencia_min: float | None = Non
         result = [i for i in result if i["potencia_kw"] <= potencia_max]
     if fases is not None:
         result = [i for i in result if i["fases"] == fases]
+    if marca:
+        result = [i for i in result if i["marca"].lower() == marca.lower()]
     return result
+
+
+# ---------------------------------------------------------------------------
+# Componentes opcionais (BOS — Balance of System)
+# ---------------------------------------------------------------------------
+
+class ComponenteOpcional(TypedDict):
+    id: str
+    categoria: str          # transformador | string_box | otimizador | estrutura | cabo | protecao | monitoramento
+    marca: str
+    modelo: str
+    descricao: str
+    especificacao: str      # potência, tensão, ou dimensão principal
+    compatibilidade: str    # "universal" | "marca_especifica"
+    preco_referencia: float # R$ estimado (referência, não vinculante)
+
+
+COMPONENTES_OPCIONAIS: list[ComponenteOpcional] = [
+    # ── Transformadores ──────────────────────────────────────────────────────
+    {"id":"trafo-15kva-220-380","categoria":"transformador","marca":"WEG","modelo":"Trafo Seco 15kVA 220/380V","descricao":"Transformador isolador trifásico 15kVA para adequação de tensão","especificacao":"15kVA 220/380V","compatibilidade":"universal","preco_referencia":3500.00},
+    {"id":"trafo-30kva-220-380","categoria":"transformador","marca":"WEG","modelo":"Trafo Seco 30kVA 220/380V","descricao":"Transformador isolador trifásico 30kVA para adequação de tensão","especificacao":"30kVA 220/380V","compatibilidade":"universal","preco_referencia":5800.00},
+    {"id":"trafo-50kva-220-380","categoria":"transformador","marca":"WEG","modelo":"Trafo Seco 50kVA 220/380V","descricao":"Transformador isolador trifásico 50kVA para adequação de tensão","especificacao":"50kVA 220/380V","compatibilidade":"universal","preco_referencia":8500.00},
+    {"id":"trafo-75kva-220-380","categoria":"transformador","marca":"WEG","modelo":"Trafo Seco 75kVA 220/380V","descricao":"Transformador isolador trifásico 75kVA para adequação de tensão","especificacao":"75kVA 220/380V","compatibilidade":"universal","preco_referencia":12000.00},
+    {"id":"trafo-112kva-220-380","categoria":"transformador","marca":"WEG","modelo":"Trafo Seco 112.5kVA 220/380V","descricao":"Transformador isolador trifásico 112.5kVA para adequação de tensão","especificacao":"112.5kVA 220/380V","compatibilidade":"universal","preco_referencia":16500.00},
+    {"id":"trafo-150kva-380-13800","categoria":"transformador","marca":"WEG","modelo":"Trafo Seco 150kVA 380V/13.8kV","descricao":"Transformador elevador para conexão em média tensão","especificacao":"150kVA 380V/13.8kV","compatibilidade":"universal","preco_referencia":28000.00},
+
+    # ── String Boxes ─────────────────────────────────────────────────────────
+    {"id":"stringbox-4e-1000v","categoria":"string_box","marca":"ProSolar","modelo":"SB-4E 1000V","descricao":"String box com 4 entradas, fusíveis e DPS CC","especificacao":"4 strings / 1000V / 15A","compatibilidade":"universal","preco_referencia":650.00},
+    {"id":"stringbox-8e-1000v","categoria":"string_box","marca":"ProSolar","modelo":"SB-8E 1000V","descricao":"String box com 8 entradas, fusíveis e DPS CC","especificacao":"8 strings / 1000V / 15A","compatibilidade":"universal","preco_referencia":1100.00},
+    {"id":"stringbox-16e-1100v","categoria":"string_box","marca":"ProSolar","modelo":"SB-16E 1100V","descricao":"String box com 16 entradas para usinas, fusíveis e DPS CC","especificacao":"16 strings / 1100V / 20A","compatibilidade":"universal","preco_referencia":2200.00},
+    {"id":"stringbox-4e-chave","categoria":"string_box","marca":"CLAMPER","modelo":"SB-4E-SEC 1000V","descricao":"String box 4 entradas com chave seccionadora e monitoramento","especificacao":"4 strings / 1000V / 15A + chave","compatibilidade":"universal","preco_referencia":950.00},
+
+    # ── Otimizadores ─────────────────────────────────────────────────────────
+    {"id":"solaredge-p505","categoria":"otimizador","marca":"SolarEdge","modelo":"P505 Otimizador 505W","descricao":"Otimizador DC/DC para módulos até 505W","especificacao":"505W / 60V / 12.5A","compatibilidade":"SolarEdge","preco_referencia":280.00},
+    {"id":"solaredge-p600","categoria":"otimizador","marca":"SolarEdge","modelo":"P600 Otimizador 600W","descricao":"Otimizador DC/DC para módulos até 600W","especificacao":"600W / 60V / 15A","compatibilidade":"SolarEdge","preco_referencia":320.00},
+    {"id":"tigo-ts4-a-o","categoria":"otimizador","marca":"Tigo","modelo":"TS4-A-O Otimizador 700W","descricao":"Otimizador retrofit universal para qualquer inversor string","especificacao":"700W / 80V / 15A","compatibilidade":"universal","preco_referencia":190.00},
+
+    # ── Estruturas de fixação ────────────────────────────────────────────────
+    {"id":"estrutura-solo-10mod","categoria":"estrutura","marca":"Romagnole","modelo":"Kit Solo 10 Módulos","descricao":"Estrutura de fixação em solo para 10 módulos em 2 fileiras","especificacao":"10 módulos / alumínio / inclinação ajustável","compatibilidade":"universal","preco_referencia":2800.00},
+    {"id":"estrutura-telhado-ceram-10mod","categoria":"estrutura","marca":"Romagnole","modelo":"Kit Telha Cerâmica 10 Módulos","descricao":"Suporte para telhado cerâmico, 10 módulos em trilho","especificacao":"10 módulos / alumínio / trilho","compatibilidade":"universal","preco_referencia":1200.00},
+    {"id":"estrutura-telhado-metal-10mod","categoria":"estrutura","marca":"Romagnole","modelo":"Kit Telha Metálica 10 Módulos","descricao":"Suporte para telhado metálico com mini-trilho","especificacao":"10 módulos / alumínio / mini-trilho","compatibilidade":"universal","preco_referencia":900.00},
+    {"id":"estrutura-laje-10mod","categoria":"estrutura","marca":"Romagnole","modelo":"Kit Laje 10 Módulos","descricao":"Estrutura triângulo para laje plana, 10 módulos","especificacao":"10 módulos / alumínio / 15°","compatibilidade":"universal","preco_referencia":1600.00},
+
+    # ── Cabos solares CC ─────────────────────────────────────────────────────
+    {"id":"cabo-solar-6mm-preto","categoria":"cabo","marca":"Prysmian","modelo":"Cabo Solar 6mm² Preto (100m)","descricao":"Cabo CC solar 6mm², 1.8kV, resistente UV, rolo 100m","especificacao":"6mm² / 1.8kV / 100m / preto","compatibilidade":"universal","preco_referencia":550.00},
+    {"id":"cabo-solar-6mm-vermelho","categoria":"cabo","marca":"Prysmian","modelo":"Cabo Solar 6mm² Vermelho (100m)","descricao":"Cabo CC solar 6mm², 1.8kV, resistente UV, rolo 100m","especificacao":"6mm² / 1.8kV / 100m / vermelho","compatibilidade":"universal","preco_referencia":550.00},
+    {"id":"cabo-solar-10mm-preto","categoria":"cabo","marca":"Nexans","modelo":"Cabo Solar 10mm² Preto (100m)","descricao":"Cabo CC solar 10mm², 1.8kV, para strings longas","especificacao":"10mm² / 1.8kV / 100m / preto","compatibilidade":"universal","preco_referencia":900.00},
+
+    # ── Proteção e DPS ───────────────────────────────────────────────────────
+    {"id":"dps-cc-1000v","categoria":"protecao","marca":"CLAMPER","modelo":"DPS CC 1000V Tipo II","descricao":"Dispositivo de proteção contra surto lado CC, 1000V","especificacao":"1000V / 40kA / Tipo II","compatibilidade":"universal","preco_referencia":320.00},
+    {"id":"dps-ca-275v","categoria":"protecao","marca":"CLAMPER","modelo":"DPS CA 275V Tipo II","descricao":"Dispositivo de proteção contra surto lado CA, 275V","especificacao":"275V / 45kA / Tipo II","compatibilidade":"universal","preco_referencia":180.00},
+    {"id":"disjuntor-cc-32a-1000v","categoria":"protecao","marca":"ABB","modelo":"Disjuntor CC 32A 1000V","descricao":"Disjuntor bipolar CC para proteção do string box","especificacao":"32A / 1000Vcc / 2P","compatibilidade":"universal","preco_referencia":250.00},
+
+    # ── Monitoramento ────────────────────────────────────────────────────────
+    {"id":"datalogger-growatt-shine","categoria":"monitoramento","marca":"Growatt","modelo":"ShineWiFi-X Datalogger","descricao":"Módulo WiFi para monitoramento remoto de inversores Growatt","especificacao":"WiFi 2.4GHz / App ShinePhone","compatibilidade":"Growatt","preco_referencia":150.00},
+    {"id":"datalogger-solis-s3","categoria":"monitoramento","marca":"Solis","modelo":"S3-WiFi-ST Datalogger","descricao":"Módulo WiFi para monitoramento remoto de inversores Solis","especificacao":"WiFi 2.4GHz / SolisCloud","compatibilidade":"Solis","preco_referencia":160.00},
+    {"id":"medidor-energia-bidi","categoria":"monitoramento","marca":"PZEM","modelo":"Medidor Bidirecional PZEM-004T","descricao":"Medidor de energia bidirecional para controle de injeção","especificacao":"100A / RS485 / Modbus","compatibilidade":"universal","preco_referencia":120.00},
+]
+
+_COMPONENTES_BY_ID: dict[str, ComponenteOpcional] = {c["id"]: c for c in COMPONENTES_OPCIONAIS}
+
+
+def get_componente(componente_id: str) -> ComponenteOpcional | None:
+    return _COMPONENTES_BY_ID.get(componente_id)
+
+
+def filtrar_componentes(categoria: str | None = None, marca: str | None = None, q: str | None = None) -> list[ComponenteOpcional]:
+    result = COMPONENTES_OPCIONAIS
+    if categoria:
+        result = [c for c in result if c["categoria"] == categoria]
+    if marca:
+        result = [c for c in result if c["marca"].lower() == marca.lower()]
+    if q:
+        termo = q.lower()
+        result = [c for c in result if termo in c["marca"].lower() or termo in c["modelo"].lower() or termo in c["descricao"].lower()]
+    return result
+

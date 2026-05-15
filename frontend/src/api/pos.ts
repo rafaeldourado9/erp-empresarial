@@ -15,4 +15,25 @@ export const caixaApi = {
   obterOS: (id: string) => api.get(`/caixa/os/${id}`).then(r => r.data),
   concluirOS: (id: string) => api.patch(`/caixa/os/${id}/concluir`).then(r => r.data),
   cancelarOS: (id: string) => api.patch(`/caixa/os/${id}/cancelar`).then(r => r.data),
+
+  // PDFs — usam axios para receber o blob com o token já injetado
+  baixarPdfOS: async (id: string) => {
+    const r = await api.get(`/caixa/os/${id}/pdf`, { responseType: 'blob' })
+    return r.data as Blob
+  },
+  baixarRelatorioPdf: async (params: { inicio?: string; fim?: string; status?: string }) => {
+    const r = await api.get('/caixa/os/relatorio/pdf', { params, responseType: 'blob' })
+    return r.data as Blob
+  },
+}
+
+export function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

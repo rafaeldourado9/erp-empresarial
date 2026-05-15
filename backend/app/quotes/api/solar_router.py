@@ -8,8 +8,10 @@ from fastapi import APIRouter, Query
 from app.quotes.data.solar_catalog import (
     INVERSORES,
     MODULOS,
+    COMPONENTES_OPCIONAIS,
     filtrar_inversores,
     filtrar_modulos,
+    filtrar_componentes,
     get_inversor,
     get_modulo,
 )
@@ -47,13 +49,24 @@ async def listar_inversores(
     potencia_min: float | None = Query(None),
     potencia_max: float | None = Query(None),
     fases: int | None = Query(None),
+    marca: str | None = Query(None, description="Filtrar por marca exata (ex: Solis, Growatt)"),
     q: str | None = Query(None, description="Busca livre por marca ou modelo"),
 ) -> list[dict]:
-    resultado = filtrar_inversores(tipo=tipo, potencia_min=potencia_min, potencia_max=potencia_max, fases=fases)
+    resultado = filtrar_inversores(tipo=tipo, potencia_min=potencia_min, potencia_max=potencia_max, fases=fases, marca=marca)
     if q:
         termo = q.lower()
         resultado = [i for i in resultado if termo in i["marca"].lower() or termo in i["modelo"].lower()]
     return resultado  # type: ignore[return-value]
+
+
+@router.get("/componentes")
+async def listar_componentes(
+    categoria: str | None = Query(None, description="transformador | string_box | otimizador | estrutura | cabo | protecao | monitoramento"),
+    marca: str | None = Query(None),
+    q: str | None = Query(None, description="Busca livre por marca, modelo ou descrição"),
+) -> list[dict]:
+    """Lista componentes opcionais (BOS) filtráveis por categoria."""
+    return filtrar_componentes(categoria=categoria, marca=marca, q=q)  # type: ignore[return-value]
 
 
 # ── Dimensionamento ──────────────────────────────────────────────────────────

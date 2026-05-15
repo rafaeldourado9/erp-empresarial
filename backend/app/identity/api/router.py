@@ -145,6 +145,8 @@ async def listar_operadores(
         empresa_id=u.empresa_id, grupo_id=u.grupo_id, ativo=u.ativo,
         permissoes=u.permissoes if isinstance(u.permissoes, list) else [],
         comissao_percentual=float(getattr(u, 'comissao_percentual', 0) or 0),
+        telefone=getattr(u, 'telefone', None),
+        endereco=getattr(u, 'endereco', None),
     ) for u in usuarios]
 
 

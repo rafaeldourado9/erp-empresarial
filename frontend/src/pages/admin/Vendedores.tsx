@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Pencil, KeyRound, ToggleLeft, ToggleRight, X, Award } from 'lucide-react'
+import { Plus, Pencil, KeyRound, ToggleLeft, ToggleRight, X, Award, Phone, MapPin } from 'lucide-react'
 import { operadoresApi } from '../../api/operators'
 import { comissoesApi } from '../../api/commissions'
 
@@ -39,6 +39,9 @@ export function Vendedores() {
           perfil: 'VENDEDOR',
           permissoes: modal.permissoes ?? [],
           comissao_percentual: modal.comissao_percentual ?? 0,
+          telefone: modal.telefone || null,
+          endereco: modal.endereco || null,
+          senha: modal.senha || undefined,
         })
       } else {
         await operadoresApi.criar({
@@ -48,6 +51,8 @@ export function Vendedores() {
           perfil: 'VENDEDOR',
           permissoes: ['ver_dashboard', 'ver_orcamentos', 'criar_orcamentos', 'ver_clientes', 'editar_clientes', 'ver_comissoes'],
           comissao_percentual: modal.comissao_percentual ?? 0,
+          telefone: modal.telefone || null,
+          endereco: modal.endereco || null,
         })
       }
       setModal(null)
@@ -69,7 +74,7 @@ export function Vendedores() {
     setNovaSenha('')
   }
 
-  const emptyVendedor = { nome: '', email: '', senha: '', comissao_percentual: 0, permissoes: [] }
+  const emptyVendedor = { nome: '', email: '', senha: '', comissao_percentual: 0, permissoes: [], telefone: '', endereco: '' }
   const totalPendente = comissoes.reduce((s: number, c: any) => s + c.valor_comissao, 0)
 
   return (
@@ -103,6 +108,7 @@ export function Vendedores() {
               <tr>
                 <th>Nome</th>
                 <th>E-mail</th>
+                <th>Telefone</th>
                 <th>% Comissão</th>
                 <th>Comissão Pendente</th>
                 <th>Status</th>
@@ -111,11 +117,11 @@ export function Vendedores() {
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={6} className="text-center py-10 text-gray-400">Carregando...</td></tr>
+                <tr><td colSpan={7} className="text-center py-10 text-gray-400">Carregando...</td></tr>
               )}
               {!loading && vendedores.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="text-center py-10 text-gray-400">
+                  <td colSpan={7} className="text-center py-10 text-gray-400">
                     Nenhum vendedor cadastrado
                     <p className="text-xs mt-1 text-gray-300">Clique em "Novo Vendedor" para adicionar</p>
                   </td>
@@ -125,6 +131,7 @@ export function Vendedores() {
                 <tr key={v.id}>
                   <td className="font-medium">{v.nome}</td>
                   <td className="text-gray-500">{v.email}</td>
+                  <td className="text-gray-500 text-xs">{v.telefone || '—'}</td>
                   <td>
                     <span className="badge-blue" style={{ fontVariantNumeric: 'tabular-nums' }}>
                       {v.comissao_percentual ?? 0}%
@@ -143,7 +150,7 @@ export function Vendedores() {
                   </td>
                   <td>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => setModal({ ...v, senha: '' })} title="Editar"
+                      <button onClick={() => setModal({ ...v, senha: '', telefone: v.telefone ?? '', endereco: v.endereco ?? '' })} title="Editar"
                         className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
@@ -183,7 +190,7 @@ export function Vendedores() {
                   onChange={e => setModal((m: any) => ({ ...m, nome: e.target.value }))}
                   className="form-input" placeholder="Nome completo" />
               </div>
-              {!modal.id && (
+              {!modal.id ? (
                 <>
                   <div>
                     <label className="form-label">E-mail *</label>
@@ -195,23 +202,48 @@ export function Vendedores() {
                     <label className="form-label">Senha inicial *</label>
                     <input type="password" value={modal.senha}
                       onChange={e => setModal((m: any) => ({ ...m, senha: e.target.value }))}
-                      className="form-input" />
+                      className="form-input" placeholder="Mínimo 6 caracteres" />
                   </div>
                 </>
-              )}
-              <div>
-                <label className="form-label">% de Comissão sobre Venda Aprovada</label>
-                <div className="flex items-center gap-2">
-                  <input type="number" min={0} max={100} step={0.1}
-                    value={modal.comissao_percentual ?? 0}
-                    onChange={e => setModal((m: any) => ({ ...m, comissao_percentual: +e.target.value }))}
-                    className="form-input" />
-                  <span className="text-sm text-gray-500 shrink-0">%</span>
+              ) : (
+                <div>
+                  <label className="form-label">Nova senha <span className="text-gray-400 font-normal">(deixe em branco para manter)</span></label>
+                  <input type="password" value={modal.senha ?? ''}
+                    onChange={e => setModal((m: any) => ({ ...m, senha: e.target.value }))}
+                    className="form-input" placeholder="••••••" />
                 </div>
-                <p className="text-xs text-gray-400 mt-1">
-                  Calculado sobre o valor de venda ao aprovar a proposta
-                </p>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="form-label">
+                    <Phone className="w-3.5 h-3.5 inline mr-1" />Telefone
+                  </label>
+                  <input value={modal.telefone ?? ''}
+                    onChange={e => setModal((m: any) => ({ ...m, telefone: e.target.value }))}
+                    className="form-input" placeholder="(00) 00000-0000" />
+                </div>
+                <div>
+                  <label className="form-label">% Comissão</label>
+                  <div className="flex items-center gap-2">
+                    <input type="number" min={0} max={100} step={0.1}
+                      value={modal.comissao_percentual ?? 0}
+                      onChange={e => setModal((m: any) => ({ ...m, comissao_percentual: +e.target.value }))}
+                      className="form-input" />
+                    <span className="text-sm text-gray-500 shrink-0">%</span>
+                  </div>
+                </div>
               </div>
+              <div>
+                <label className="form-label">
+                  <MapPin className="w-3.5 h-3.5 inline mr-1" />Endereço
+                </label>
+                <input value={modal.endereco ?? ''}
+                  onChange={e => setModal((m: any) => ({ ...m, endereco: e.target.value }))}
+                  className="form-input" placeholder="Rua, nº, bairro, cidade" />
+              </div>
+              <p className="text-xs text-gray-400">
+                Comissão calculada sobre o valor de venda ao aprovar a proposta
+              </p>
             </div>
             <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-100 bg-gray-50 rounded-b-xl">
               <button onClick={() => setModal(null)} className="btn-secondary">Cancelar</button>
