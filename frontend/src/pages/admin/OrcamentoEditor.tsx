@@ -138,6 +138,7 @@ export function OrcamentoEditor() {
   const [clientes, setClientes] = useState<any[]>([])
   const [vendedores, setVendedores] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     premissasApi.listar().then(setTemplates).catch(() => {})
@@ -244,7 +245,9 @@ export function OrcamentoEditor() {
   const removerItem = (key: string) => setItens(prev => prev.filter(i => i._key !== key))
 
   const handleSalvar = async () => {
-    if (!titulo || !Number(custoBase)) return
+    if (!titulo) { setSaveError('Informe o título do orçamento'); return }
+    if (!Number(custoBase)) { setSaveError('Informe o custo base'); return }
+    setSaveError(null)
     setLoading(true)
     try {
       const payload = {
@@ -745,10 +748,13 @@ export function OrcamentoEditor() {
               </div>
             </div>
 
-            <div className="px-5 pb-5">
+            <div className="px-5 pb-5 space-y-3">
+              {saveError && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>
+              )}
               <button
                 onClick={handleSalvar}
-                disabled={loading || !titulo || !Number(custoBase)}
+                disabled={loading}
                 className="btn-primary w-full justify-center">
                 {loading ? 'Salvando...' : isNew ? 'Criar Orçamento' : 'Salvar Alterações'}
               </button>

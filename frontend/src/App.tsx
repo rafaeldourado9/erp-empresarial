@@ -16,6 +16,7 @@ import { Operadores } from './pages/admin/Operadores'
 import { Vendedores } from './pages/admin/Vendedores'
 import { Auditoria } from './pages/admin/Auditoria'
 import { Configuracoes } from './pages/admin/Configuracoes'
+import { Templates } from './pages/admin/Templates'
 
 export default function App() {
   return (
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="/operadores" element={<Operadores />} />
           <Route path="/auditoria" element={<Auditoria />} />
           <Route path="/configuracoes" element={<Configuracoes />} />
+          <Route path="/templates" element={<Templates />} />
         </Route>
       </Routes>
     </BrowserRouter>

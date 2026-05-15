@@ -45,16 +45,9 @@ export function Step3_Modulo() {
       moduloMarca: m.marca,
       moduloModelo: m.modelo,
       moduloPotencia: m.potencia_wp,
+      moduloEficiencia: m.eficiencia || '',
       potenciaPlaca: m.potencia_wp,
       qtdModulos: draft.qtdPlacas ?? draft.qtdModulos,
-      camposExtras: {
-        ...draft.camposExtras,
-        modulo_fabricante: m.marca,
-        modulo_modelo: m.modelo,
-        modulo_potencia: String(m.potencia_wp),
-        modulo_quantidade: String(draft.qtdPlacas ?? draft.qtdModulos ?? ''),
-        vc_modulo_eficiencia: String(m.eficiencia),
-      },
     })
   }
 

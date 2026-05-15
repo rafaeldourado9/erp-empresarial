@@ -53,6 +53,7 @@ class MovimentoResponse(BaseModel):
     criado_por: UUID
     criado_em: datetime
     conciliado: bool
+    origem: str
 
 
 class ResumoFinanceiroResponse(BaseModel):
@@ -168,6 +169,7 @@ def _to_movimento(m: MovimentoCaixaORM) -> MovimentoResponse:
         categoria=m.categoria, descricao=m.descricao, valor=float(m.valor),
         data=m.data, orcamento_id=UUID(m.orcamento_id) if m.orcamento_id else None,
         criado_por=UUID(m.criado_por), criado_em=m.criado_em, conciliado=m.conciliado,
+        origem=m.origem or "manual",
     )
 
 
@@ -182,10 +184,14 @@ async def _somar_pagamentos(db: AsyncSession, conta_id: str) -> float:
 def _status_conta(c: ContaORM, valor_pago: float) -> str:
     if c.status == "cancelado":
         return "cancelado"
+    if c.status == "pago":
+        return "quitado"
     valor = float(c.valor)
-    if valor_pago <= 0:
+    abatimento = float(c.valor_abatimento or 0)
+    liquidado = valor_pago + abatimento
+    if liquidado <= 0:
         return "aberto"
-    if valor_pago >= valor - 0.005:  # tolerância 0.5 centavo
+    if liquidado >= valor - 0.005:
         return "quitado"
     return "parcial"
 
@@ -193,6 +199,7 @@ def _status_conta(c: ContaORM, valor_pago: float) -> str:
 async def _to_conta(c: ContaORM, db: AsyncSession) -> ContaResponse:
     valor_pago = await _somar_pagamentos(db, c.id)
     valor = float(c.valor)
+    abatimento = float(c.valor_abatimento or 0)
     return ContaResponse(
         id=UUID(c.id), empresa_id=UUID(c.empresa_id), tipo=c.tipo,
         descricao=c.descricao, parceiro=c.parceiro, valor=valor,
@@ -202,8 +209,8 @@ async def _to_conta(c: ContaORM, db: AsyncSession) -> ContaResponse:
         cliente_id=UUID(c.cliente_id) if c.cliente_id else None,
         observacoes=c.observacoes,
         origem=c.origem or "manual",
-        valor_pago=round(valor_pago, 2),
-        valor_restante=round(valor - valor_pago, 2),
+        valor_pago=round(valor_pago + abatimento, 2),
+        valor_restante=round(max(0.0, valor - valor_pago - abatimento), 2),
         criado_por=UUID(c.criado_por), criado_em=c.criado_em,
     )
 
@@ -449,6 +456,80 @@ async def criar_conta(
     return await _to_conta(orm, db)
 
 
+class PagarContaRequest(BaseModel):
+    data_pagamento: date | None = None
+    valor_abatimento: float = 0.0   # desconto concedido (reduz o saldo devedor)
+    motivo_abatimento: str | None = None
+
+
+@router.patch("/contas/{conta_id}/pagar", response_model=ContaResponse)
+async def pagar_conta(
+    conta_id: UUID,
+    body: PagarContaRequest,
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ContaResponse:
+    """Registra pagamento total com desconto opcional.
+
+    valor_abatimento reduz o saldo devedor (desconto negociado).
+    O efetivo pago = valor_restante - valor_abatimento.
+    """
+    eid = str(_empresa_id(usuario))
+    result = await db.execute(
+        select(ContaORM).where(ContaORM.id == str(conta_id), ContaORM.empresa_id == eid)
+    )
+    conta = result.scalar_one_or_none()
+    if conta is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    if conta.status == "cancelado":
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="Conta cancelada não pode ser paga")
+    if conta.status in ("pago", "quitado"):
+        return await _to_conta(conta, db)
+
+    valor_ja_pago = await _somar_pagamentos(db, conta.id)
+    valor_restante = float(conta.valor) - valor_ja_pago
+    abatimento = float(body.valor_abatimento or 0)
+
+    if abatimento < 0:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Abatimento não pode ser negativo")
+    if abatimento > valor_restante + 0.005:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Abatimento de R$ {abatimento:.2f} excede o saldo restante (R$ {valor_restante:.2f})",
+        )
+
+    data_pag = body.data_pagamento or date.today()
+    efetivo = valor_restante - abatimento  # valor realmente pago em caixa
+
+    if efetivo > 0.005:
+        pagamento = PagamentoParcialORM(
+            id=str(uuid4()), conta_id=conta.id, valor=efetivo,
+            data=data_pag, observacao=body.motivo_abatimento,
+            operador_id=str(usuario.id), criado_em=datetime.now(UTC),
+        )
+        db.add(pagamento)
+        # Registra entrada/saída no caixa
+        movimento = MovimentoCaixaORM(
+            id=str(uuid4()), empresa_id=eid,
+            tipo="entrada" if conta.tipo == "receber" else "saida",
+            categoria=conta.origem or "manual",
+            descricao=f"Pagamento: {conta.descricao}",
+            valor=efetivo, data=data_pag,
+            orcamento_id=conta.orcamento_id,
+            criado_por=str(usuario.id), criado_em=datetime.now(UTC),
+            conciliado=True, origem=conta.origem or "manual",
+        )
+        db.add(movimento)
+
+    conta.status = "pago"
+    conta.data_pagamento = data_pag
+    if abatimento > 0:
+        conta.valor_abatimento = abatimento
+        conta.motivo_abatimento = body.motivo_abatimento
+    await db.flush()
+    return await _to_conta(conta, db)
+
+
 @router.post("/contas/{conta_id}/abater", response_model=ContaResponse)
 async def abater_conta(
     conta_id: UUID,
@@ -492,12 +573,24 @@ async def abater_conta(
 
     # Refresh status derivado e marcar data_pagamento se quitou agora
     novo_pago = pago + body.valor
+    data_mov = body.data or date.today()
     if novo_pago >= float(conta.valor) - 0.005:
         conta.status = "pago"  # legado: mantém compat
-        conta.data_pagamento = body.data or date.today()
+        conta.data_pagamento = data_mov
+        # Registra movimentação de caixa ao quitar
+        movimento = MovimentoCaixaORM(
+            id=str(uuid4()), empresa_id=eid,
+            tipo="entrada" if conta.tipo == "receber" else "saida",
+            categoria=conta.origem or "manual",
+            descricao=f"Pagamento: {conta.descricao}",
+            valor=float(conta.valor), data=data_mov,
+            orcamento_id=conta.orcamento_id,
+            criado_por=str(usuario.id), criado_em=datetime.now(UTC),
+            conciliado=True, origem=conta.origem or "manual",
+        )
+        db.add(movimento)
     else:
         conta.status = "pendente"  # ainda em aberto/parcial
-        # Não setar data_pagamento até quitar
     await db.flush()
 
     return await _to_conta(conta, db)

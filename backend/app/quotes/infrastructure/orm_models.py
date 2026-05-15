@@ -92,3 +92,17 @@ class VariavelOrcamentoORM(Base):
     label: Mapped[str] = mapped_column(String(200), nullable=False)
     grupo: Mapped[str] = mapped_column(String(100), nullable=False, default="Personalizado")
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class TemplatePropostaORM(Base):
+    """Template DOCX de proposta comercial — múltiplos por empresa."""
+    __tablename__ = "templates_proposta"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    empresa_id: Mapped[str] = mapped_column(String(36), ForeignKey("empresas.id"), nullable=False, index=True)
+    nome: Mapped[str] = mapped_column(String(200), nullable=False)
+    descricao: Mapped[str | None] = mapped_column(Text, nullable=True)
+    arquivo_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    padrao: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -47,13 +47,6 @@ export function Step4_Inversor() {
       inversorMarca: inv.marca,
       inversorModelo: inv.modelo,
       inversorPotencia: inv.potencia_kw,
-      camposExtras: {
-        ...draft.camposExtras,
-        inversor_fabricante: inv.marca,
-        inversor_potencia: String(inv.potencia_kw),
-        inversor_potencia_nominal: `${inv.potencia_kw} kW`,
-        inversores_utilizados: String(draft.qtdInversores || 1),
-      },
     })
   }
 

@@ -13,6 +13,12 @@ export const financeiroApi = {
   listarContas: (params?: object) => api.get('/financeiro/contas', { params }).then(r => r.data),
   criarConta: (data: object) => api.post('/financeiro/contas', data).then(r => r.data),
   pagarConta: (id: string, body: { data_pagamento?: string; valor_abatimento?: number; motivo_abatimento?: string }) =>
-    api.patch(`/financeiro/contas/${id}/pagar`, body).then(r => r.data),
+    api.patch(`/financeiro/contas/${id}/pagar`, {
+      data_pagamento: body.data_pagamento || undefined,
+      valor_abatimento: body.valor_abatimento || 0,
+      motivo_abatimento: body.motivo_abatimento || undefined,
+    }).then(r => r.data),
+  abaterConta: (id: string, body: { valor: number; data?: string; observacao?: string }) =>
+    api.post(`/financeiro/contas/${id}/abater`, body).then(r => r.data),
   cancelarConta: (id: string) => api.patch(`/financeiro/contas/${id}/cancelar`).then(r => r.data),
 }

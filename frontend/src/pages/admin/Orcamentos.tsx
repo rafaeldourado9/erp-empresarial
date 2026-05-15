@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
-import { Plus, Eye, CheckCircle, XCircle, Send, Download, Inbox } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { Plus, Eye, CheckCircle, XCircle, Send, Download, Inbox, FileText, ChevronDown } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { orcamentosApi } from '../../api/quotes'
+import { orcamentosApi, templatesApi, type TemplateItem } from '../../api/quotes'
 import { TableRowsSkeleton } from '../../components/ui/Skeleton'
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
@@ -22,19 +23,49 @@ const FILTROS = [
   { v: 'reprovado', label: 'Reprovado' },
 ]
 
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 export function Orcamentos() {
   const [orcamentos, setOrcamentos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filtroStatus, setFiltroStatus] = useState('')
+  const [templates, setTemplates] = useState<TemplateItem[]>([])
+  const [docxMenuOrc, setDocxMenuOrc] = useState<string | null>(null)
+  const [menuRect, setMenuRect] = useState<DOMRect | null>(null)
+  const [baixandoDocx, setBaixandoDocx] = useState<string | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   const carregar = () => {
     setLoading(true)
+    setOrcamentos([])
     orcamentosApi.listar(filtroStatus || undefined)
       .then(setOrcamentos)
       .finally(() => setLoading(false))
   }
 
   useEffect(() => { carregar() }, [filtroStatus])
+  useEffect(() => { templatesApi.listar().then(setTemplates).catch(() => {}) }, [])
+
+  useEffect(() => {
+    if (!docxMenuOrc) return
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setDocxMenuOrc(null)
+        setMenuRect(null)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [docxMenuOrc])
 
   const handleEnviar = async (id: string) => {
     if (!confirm('Marcar orçamento como enviado?')) return
@@ -55,16 +86,22 @@ export function Orcamentos() {
   const handleBaixarPdf = async (id: string, numero: string) => {
     try {
       const blob = await orcamentosApi.baixarPdf(id)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `orcamento-${numero}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      downloadBlob(blob, `orcamento-${numero}.pdf`)
     } catch (err: any) {
       alert(err?.response?.data?.detail || 'Erro ao gerar PDF')
+    }
+  }
+
+  const handleBaixarDocx = async (orcId: string, numero: string, templateId?: string) => {
+    setBaixandoDocx(orcId)
+    setDocxMenuOrc(null)
+    try {
+      const blob = await orcamentosApi.baixarDocx(orcId, templateId)
+      downloadBlob(blob, `proposta-${numero}.docx`)
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Erro ao gerar DOCX')
+    } finally {
+      setBaixandoDocx(null)
     }
   }
 
@@ -117,7 +154,7 @@ export function Orcamentos() {
                 </td>
               </tr>
             )}
-            {orcamentos.map(o => {
+            {!loading && orcamentos.map(o => {
               const sc = STATUS_CONFIG[o.status] ?? { label: o.status, cls: 'bg-gray-100 text-gray-600' }
               return (
                 <tr key={o.id} className="hover:bg-gray-50">
@@ -142,6 +179,25 @@ export function Orcamentos() {
                       >
                         <Download className="w-4 h-4" />
                       </button>
+                      {/* DOCX download with template selector */}
+                      <button
+                        onClick={e => {
+                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                          if (docxMenuOrc === o.id) {
+                            setDocxMenuOrc(null)
+                            setMenuRect(null)
+                          } else {
+                            setDocxMenuOrc(o.id)
+                            setMenuRect(rect)
+                          }
+                        }}
+                        disabled={baixandoDocx === o.id}
+                        className="flex items-center gap-0.5 p-1 text-gray-400 hover:text-blue-600 disabled:opacity-50"
+                        title="Baixar DOCX"
+                      >
+                        <FileText className="w-4 h-4" />
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
                       {o.status === 'rascunho' && (
                         <button onClick={() => handleEnviar(o.id)} className="p-1 text-gray-400 hover:text-blue-600" title="Enviar">
                           <Send className="w-4 h-4" />
@@ -165,6 +221,44 @@ export function Orcamentos() {
           </tbody>
         </table>
       </div>
+      {docxMenuOrc && menuRect && createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: 'fixed',
+            top: menuRect.bottom + 4,
+            right: window.innerWidth - menuRect.right,
+            zIndex: 9999,
+          }}
+          className="bg-white border border-gray-200 rounded-xl shadow-lg min-w-[200px] py-1"
+        >
+          <p className="px-3 py-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Selecionar template</p>
+          {templates.length === 0 ? (
+            <button
+              onClick={() => handleBaixarDocx(docxMenuOrc, orcamentos.find(o => o.id === docxMenuOrc)?.numero ?? '')}
+              className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Template padrão
+            </button>
+          ) : (
+            templates.map(tpl => {
+              const orc = orcamentos.find(o => o.id === docxMenuOrc)
+              return (
+                <button
+                  key={tpl.id}
+                  onClick={() => handleBaixarDocx(docxMenuOrc, orc?.numero ?? '', tpl.id)}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2"
+                >
+                  <FileText className="w-3.5 h-3.5 shrink-0 text-gray-400" />
+                  <span className="truncate">{tpl.nome}</span>
+                  {tpl.padrao && <span className="ml-auto text-[10px] text-blue-500 font-medium shrink-0">padrão</span>}
+                </button>
+              )
+            })
+          )}
+        </div>,
+        document.body
+      )}
     </div>
   )
 }

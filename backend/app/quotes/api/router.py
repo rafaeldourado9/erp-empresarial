@@ -382,8 +382,85 @@ async def criar_orcamento(
     orc.valor_venda = valor_venda
     await repo.salvar(orc)
 
+    from app.audit.application.service import registrar_evento
+    await registrar_evento(
+        db, usuario_id=str(usuario.id), usuario_nome=usuario.nome,
+        empresa_id=str(empresa_id), grupo_id=str(usuario.grupo_id) if usuario.grupo_id else None,
+        acao="criar", recurso="orcamento", recurso_id=orc.id,
+        detalhes=f"{orc.numero} — {orc.titulo}",
+    )
+
     return await _orc_to_response(orc, repo)
 
+
+# ── Static GET sub-routes (must be registered BEFORE /{orc_id} to avoid UUID validation clash) ──
+
+from app.quotes.infrastructure.orm_models import TemplatePropostaORM as _TplORM
+
+
+class TemplateResponse(BaseModel):
+    id: str
+    nome: str
+    descricao: str | None
+    padrao: bool
+    ativo: bool
+    criado_em: datetime
+
+
+def _tpl_to_response(t: _TplORM) -> TemplateResponse:
+    return TemplateResponse(
+        id=t.id, nome=t.nome, descricao=t.descricao,
+        padrao=t.padrao, ativo=t.ativo, criado_em=t.criado_em,
+    )
+
+
+@router.get("/orcamentos/variaveis")
+async def listar_variaveis(
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    from sqlalchemy import select
+    eid = str(_empresa_id(usuario))
+    result = await db.execute(
+        select(VariavelOrcamentoORM).where(VariavelOrcamentoORM.empresa_id == eid)
+    )
+    custom = result.scalars().all()
+    return {
+        "sistema": VARIAVEIS_SISTEMA,
+        "personalizadas": [
+            {"id": v.id, "chave": v.chave, "label": v.label, "grupo": v.grupo}
+            for v in custom
+        ],
+    }
+
+
+@router.get("/orcamentos/templates", response_model=list[TemplateResponse])
+async def listar_templates(
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[TemplateResponse]:
+    from sqlalchemy import select
+    eid = str(_empresa_id(usuario))
+    result = await db.execute(
+        select(_TplORM)
+        .where(_TplORM.empresa_id == eid, _TplORM.ativo == True)
+        .order_by(_TplORM.padrao.desc(), _TplORM.criado_em.desc())
+    )
+    return [_tpl_to_response(t) for t in result.scalars()]
+
+
+@router.get("/orcamentos/template/exemplo")
+async def baixar_template_exemplo(usuario: UsuarioAtualDep) -> Response:
+    from app.quotes.application.template_docx_service import gerar_template_docx
+    docx_bytes = gerar_template_docx()
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": 'attachment; filename="modelo-proposta-comercial.docx"'},
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/orcamentos/{orc_id}", response_model=OrcamentoResponse)
 async def obter_orcamento(
@@ -561,6 +638,14 @@ async def aprovar_orcamento(
     db.add(conta)
     await db.flush()
 
+    from app.audit.application.service import registrar_evento
+    await registrar_evento(
+        db, usuario_id=str(usuario.id), usuario_nome=usuario.nome,
+        empresa_id=str(orc.empresa_id), grupo_id=str(usuario.grupo_id) if usuario.grupo_id else None,
+        acao="aprovar", recurso="orcamento", recurso_id=orc.id,
+        detalhes=f"{orc.numero} — R$ {float(orc.valor_venda):.2f}",
+    )
+
     return await _orc_to_response(orc, repo)
 
 
@@ -644,26 +729,6 @@ class VariavelResponse(BaseModel):
     sistema: bool = False
 
 
-@router.get("/orcamentos/variaveis")
-async def listar_variaveis(
-    usuario: UsuarioAtualDep,
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> dict:
-    from sqlalchemy import select
-    eid = str(_empresa_id(usuario))
-    result = await db.execute(
-        select(VariavelOrcamentoORM).where(VariavelOrcamentoORM.empresa_id == eid)
-    )
-    custom = result.scalars().all()
-    return {
-        "sistema": VARIAVEIS_SISTEMA,
-        "personalizadas": [
-            {"id": v.id, "chave": v.chave, "label": v.label, "grupo": v.grupo}
-            for v in custom
-        ],
-    }
-
-
 @router.post("/orcamentos/variaveis", status_code=status.HTTP_201_CREATED)
 async def criar_variavel(
     body: VariavelRequest,
@@ -737,28 +802,135 @@ async def deletar_variavel(
     await db.delete(v)
 
 
-# ── DOCX Template ─────────────────────────────────────────────────────────────
+# ── DOCX Templates (múltiplos por empresa) ────────────────────────────────────
 
-@router.get("/orcamentos/template/exemplo")
-async def baixar_template_exemplo(usuario: UsuarioAtualDep) -> Response:
-    """Baixa um template .docx de proposta comercial com todas as variáveis pré-inseridas."""
-    from app.quotes.application.template_docx_service import gerar_template_docx
-    docx_bytes = gerar_template_docx()
+@router.post("/orcamentos/templates", response_model=TemplateResponse, status_code=status.HTTP_201_CREATED)
+async def criar_template(
+    nome: str,
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    descricao: str | None = None,
+    tornar_padrao: bool = False,
+    file: UploadFile = File(...),
+) -> TemplateResponse:
+    from pathlib import Path
+    from sqlalchemy import select
+    from uuid import uuid4
+
+    if not file.filename or not file.filename.endswith(".docx"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Apenas arquivos .docx são aceitos")
+
+    eid = str(_empresa_id(usuario))
+    tpl_id = str(uuid4())
+
+    templates_dir = Path(f"/app/templates/{eid}")
+    templates_dir.mkdir(parents=True, exist_ok=True)
+
+    arquivo_path = str(templates_dir / f"{tpl_id}.docx")
+    content = await file.read()
+    Path(arquivo_path).write_bytes(content)
+
+    # Se vai ser padrão, remove padrão dos outros
+    if tornar_padrao:
+        result = await db.execute(
+            select(_TplORM).where(_TplORM.empresa_id == eid, _TplORM.padrao == True)
+        )
+        for t in result.scalars():
+            t.padrao = False
+
+    tpl = _TplORM(
+        id=tpl_id, empresa_id=eid, nome=nome.strip(),
+        descricao=descricao.strip() if descricao else None,
+        arquivo_path=arquivo_path,
+        padrao=tornar_padrao, ativo=True,
+        criado_em=datetime.now(UTC),
+    )
+    db.add(tpl)
+    await db.flush()
+
+    # Backward compat: também salva em /app/templates/{eid}.docx se for padrão
+    if tornar_padrao:
+        Path(f"/app/templates/{eid}.docx").write_bytes(content)
+
+    return _tpl_to_response(tpl)
+
+
+@router.patch("/orcamentos/templates/{tpl_id}/padrao", response_model=TemplateResponse)
+async def definir_template_padrao(
+    tpl_id: str,
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> TemplateResponse:
+    from sqlalchemy import select
+    eid = str(_empresa_id(usuario))
+    result = await db.execute(
+        select(_TplORM).where(_TplORM.empresa_id == eid, _TplORM.ativo == True)
+    )
+    templates = result.scalars().all()
+    alvo = next((t for t in templates if t.id == tpl_id), None)
+    if alvo is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    for t in templates:
+        t.padrao = (t.id == tpl_id)
+    await db.flush()
+
+    # Atualiza backward compat file
+    from pathlib import Path
+    Path(f"/app/templates/{eid}.docx").write_bytes(Path(alvo.arquivo_path).read_bytes())
+
+    return _tpl_to_response(alvo)
+
+
+@router.delete("/orcamentos/templates/{tpl_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def deletar_template(
+    tpl_id: str,
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    from sqlalchemy import select
+    eid = str(_empresa_id(usuario))
+    result = await db.execute(
+        select(_TplORM).where(_TplORM.id == tpl_id, _TplORM.empresa_id == eid)
+    )
+    tpl = result.scalar_one_or_none()
+    if tpl is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    tpl.ativo = False
+    await db.flush()
+
+
+@router.get("/orcamentos/templates/{tpl_id}/download")
+async def baixar_template_original(
+    tpl_id: str,
+    usuario: UsuarioAtualDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    from pathlib import Path
+    from sqlalchemy import select
+    eid = str(_empresa_id(usuario))
+    result = await db.execute(
+        select(_TplORM).where(_TplORM.id == tpl_id, _TplORM.empresa_id == eid, _TplORM.ativo == True)
+    )
+    tpl = result.scalar_one_or_none()
+    if tpl is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    p = Path(tpl.arquivo_path)
+    if not p.exists():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Arquivo não encontrado no servidor")
+    nome_safe = tpl.nome.replace(" ", "_").lower()
     return Response(
-        content=docx_bytes,
+        content=p.read_bytes(),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": 'attachment; filename="modelo-proposta-comercial.docx"'},
+        headers={"Content-Disposition": f'attachment; filename="{nome_safe}.docx"'},
     )
 
 
 @router.post("/orcamentos/template", status_code=status.HTTP_204_NO_CONTENT)
-async def upload_template(
+async def upload_template_legado(
     usuario: UsuarioAtualDep,
     file: UploadFile = File(...),
 ) -> None:
-    """Salva um template .docx para a empresa. Variáveis: {{NUMERO}}, {{TITULO}}, {{CLIENTE}},
-    {{VENDEDOR}}, {{DATA}}, {{VALIDADE}}, {{CUSTO_BASE}}, {{VALOR_VENDA}}, {{OBSERVACOES}},
-    {{PREMISSAS_TABELA}} (lista de premissas), {{ITENS_TABELA}} (lista de itens)."""
+    """Legado: salva template padrão diretamente (sem nome, sem BD). Use POST /templates."""
     from pathlib import Path
     empresa_id = _empresa_id(usuario)
     templates_dir = Path("/app/templates")
@@ -772,6 +944,7 @@ async def gerar_docx(
     orc_id: UUID,
     usuario: UsuarioAtualDep,
     db: Annotated[AsyncSession, Depends(get_db)],
+    template_id: str | None = Query(None),
 ) -> Response:
     from pathlib import Path
     from sqlalchemy import select
@@ -781,9 +954,33 @@ async def gerar_docx(
     import io, zipfile
 
     empresa_id = _empresa_id(usuario)
-    template_path = Path(f"/app/templates/{empresa_id}.docx")
+    eid = str(empresa_id)
+
+    # Resolve template: por ID > padrão do BD > legado em disco
+    template_path: Path | None = None
+    if template_id:
+        tpl_result = await db.execute(
+            select(_TplORM).where(_TplORM.id == template_id, _TplORM.empresa_id == eid, _TplORM.ativo == True)
+        )
+        tpl_orm = tpl_result.scalar_one_or_none()
+        if tpl_orm:
+            template_path = Path(tpl_orm.arquivo_path)
+    if template_path is None or not template_path.exists():
+        # Tenta padrão do BD
+        tpl_result = await db.execute(
+            select(_TplORM)
+            .where(_TplORM.empresa_id == eid, _TplORM.ativo == True)
+            .order_by(_TplORM.padrao.desc(), _TplORM.criado_em.desc())
+            .limit(1)
+        )
+        tpl_orm = tpl_result.scalar_one_or_none()
+        if tpl_orm:
+            template_path = Path(tpl_orm.arquivo_path)
+    if template_path is None or not template_path.exists():
+        # Legado: /app/templates/{empresa_id}.docx
+        template_path = Path(f"/app/templates/{eid}.docx")
     if not template_path.exists():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Nenhum template encontrado. Faça upload de um arquivo .docx primeiro.")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Nenhum template cadastrado. Faça upload em Configurações → Templates.")
 
     repo = OrcamentoRepository(db)
     orc = await repo.buscar_por_id(orc_id, empresa_id)
@@ -968,22 +1165,38 @@ async def gerar_docx(
     buf = io.BytesIO()
     doc.save(buf)
 
-    # Substituição dos [bracket] no XML do DOCX gerado
-    def _replace_brackets(docx_bytes: bytes, replacements: dict[str, str]) -> bytes:
+    # Substituição dos [bracket] no DOCX — usa python-docx para tratar runs splitados
+    def _replace_brackets_robust(docx_bytes: bytes, replacements: dict[str, str]) -> bytes:
+        from docx import Document as _Doc
         inp = io.BytesIO(docx_bytes)
+        d = _Doc(inp)
+
+        def _apply(runs: list) -> None:
+            if not runs:
+                return
+            full = "".join(r.text or "" for r in runs)
+            new = full
+            for k, v in replacements.items():
+                new = new.replace(k, v)
+            if new != full:
+                runs[0].text = new
+                for r in runs[1:]:
+                    r.text = ""
+
+        for para in d.paragraphs:
+            _apply(para.runs)
+
+        for table in d.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for para in cell.paragraphs:
+                        _apply(para.runs)
+
         out = io.BytesIO()
-        with zipfile.ZipFile(inp) as zin, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
-            for item in zin.infolist():
-                data = zin.read(item.filename)
-                if item.filename.endswith(".xml"):
-                    text = data.decode("utf-8", errors="replace")
-                    for k, v in replacements.items():
-                        text = text.replace(k, v)
-                    data = text.encode("utf-8")
-                zout.writestr(item, data)
+        d.save(out)
         return out.getvalue()
 
-    final_bytes = _replace_brackets(buf.getvalue(), bracket_map)
+    final_bytes = _replace_brackets_robust(buf.getvalue(), bracket_map)
 
     return Response(
         content=final_bytes,

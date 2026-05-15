@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(docker compose *)",
-      "Bash(dir *)"
+      "Bash(dir *)",
+      "Read(//c/Users/renil/Downloads/**)",
+      "Bash(python -c ' *)"
     ]
   }
 }

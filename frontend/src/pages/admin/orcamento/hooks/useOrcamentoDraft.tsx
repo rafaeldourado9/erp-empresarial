@@ -28,17 +28,20 @@ export interface DraftState {
   cidade: string
   validadeDias: number
   observacoes: string
+  clienteComplemento: string   // endereço da instalação
   // Step 2 — Dimensionamento
   consumoMensal: number | ''
   potenciaPlaca: number | ''
   fatorRegional: number
   qtdPlacas: number | null
   kwpSistema: number | null
+  areaUtil: number | ''        // m² calculado ou manual
   // Step 3 — Módulo
   moduloId: string
   moduloMarca: string
   moduloModelo: string
   moduloPotencia: number | null
+  moduloEficiencia: number | '' // % eficiência do módulo
   qtdModulos: number | ''
   // Step 4 — Inversor
   tipoInversor: string
@@ -50,26 +53,33 @@ export interface DraftState {
   fatorOverload: number
   // Step 5 — Componentes
   componentesSelecionados: ComponenteSelecionado[]
-  // Step 6 — Resumo
+  // Step 6 — Resumo + Análise Econômica
   custoBase: number | ''
   valorVendaManual: number | ''
   premissasAplicadas: PremissaAplicada[]
   itens: ItemOrcamento[]
   camposExtras: Record<string, string>
+  // Análise econômica
+  tarifaEnergia: number | ''     // R$/kWh
+  economiaMensalP: number | ''   // % economia esperada
+  inflacaoEnergetica: number | '' // % a.a.
+  perdaEficienciaAnual: number | '' // % por ano
 }
 
 const INITIAL_DRAFT: DraftState = {
   step: 1,
   titulo: '', clienteId: '', vendedorId: '', uf: 'SP', cidade: '',
-  validadeDias: 30, observacoes: '',
+  validadeDias: 30, observacoes: '', clienteComplemento: '',
   consumoMensal: '', potenciaPlaca: 540, fatorRegional: 126,
-  qtdPlacas: null, kwpSistema: null,
-  moduloId: '', moduloMarca: '', moduloModelo: '', moduloPotencia: null, qtdModulos: '',
+  qtdPlacas: null, kwpSistema: null, areaUtil: '',
+  moduloId: '', moduloMarca: '', moduloModelo: '', moduloPotencia: null,
+  moduloEficiencia: '', qtdModulos: '',
   tipoInversor: 'string', inversorId: '', inversorMarca: '', inversorModelo: '',
   inversorPotencia: null, qtdInversores: 1, fatorOverload: 1.3,
   componentesSelecionados: [],
   custoBase: '', valorVendaManual: '',
   premissasAplicadas: [], itens: [], camposExtras: {},
+  tarifaEnergia: 0.85, economiaMensalP: 95, inflacaoEnergetica: 8, perdaEficienciaAnual: 0.7,
 }
 
 /* ── Context ────────────────────────────────────────────────────────────── */
@@ -124,16 +134,36 @@ export function OrcamentoDraftProvider({ userId, children }: { userId?: string; 
   }, [])
 
   const loadFromOrcamento = useCallback((orc: any) => {
+    const ex: Record<string, string> = orc.campos_extras || {}
+    const n = (k: string) => { const v = ex[k]; return v ? Number(v) : '' }
     _setDraft({
       ...INITIAL_DRAFT,
-      step: 6, // go to summary when editing
+      step: 6,
       titulo: orc.titulo || '',
       custoBase: orc.custo_base || '',
       clienteId: orc.cliente_id || '',
       vendedorId: orc.vendedor_id || '',
       validadeDias: orc.validade_dias || 30,
       observacoes: orc.observacoes || '',
-      camposExtras: orc.campos_extras || {},
+      clienteComplemento: ex['cliente_complemento'] || '',
+      camposExtras: ex,
+      // Restore solar dimensioning from campos_extras
+      consumoMensal: n('consumo_mensal'),
+      kwpSistema: n('potencia_sistema') || null,
+      areaUtil: n('area_util'),
+      moduloMarca: ex['modulo_fabricante'] || '',
+      moduloModelo: ex['modulo_modelo'] || '',
+      moduloPotencia: n('modulo_potencia') || null,
+      moduloEficiencia: n('vc_modulo_eficiencia'),
+      qtdModulos: n('modulo_quantidade'),
+      inversorMarca: ex['inversor_fabricante'] || '',
+      inversorPotencia: n('inversor_potencia') || null,
+      qtdInversores: n('inversores_utilizados'),
+      // Restore financial analysis
+      tarifaEnergia: n('tarifa_energia') || 0.85,
+      economiaMensalP: n('economia_mensal_p') || 95,
+      inflacaoEnergetica: n('inflacao_energetica') || 8,
+      perdaEficienciaAnual: n('perda_eficiencia_anual') || 0.7,
       premissasAplicadas: (orc.premissas || []).map((p: any) => ({
         _key: crypto.randomUUID(),
         premissa_id: p.premissa_id, nome: p.nome, descricao: p.descricao,

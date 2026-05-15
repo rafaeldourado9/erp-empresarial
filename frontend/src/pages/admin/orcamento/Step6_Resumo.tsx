@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Plus, Trash2, ChevronDown, Lock, Calculator, Check } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, Lock, Calculator, Check, UserCheck } from 'lucide-react'
 import { orcamentosApi, premissasApi } from '../../../api/quotes'
+import { operadoresApi } from '../../../api/operators'
 import { useOrcamentoDraft, type PremissaAplicada, type ItemOrcamento } from './hooks/useOrcamentoDraft'
 import { WizardLayout } from './WizardLayout'
 import { TabelaComposicao } from '../../../components/TabelaComposicao'
@@ -27,11 +28,14 @@ export function Step6_Resumo() {
   const navigate = useNavigate()
   const { draft, setDraft, resetDraft } = useOrcamentoDraft()
   const [templates, setTemplates] = useState<PremissaTemplate[]>([])
+  const [vendedores, setVendedores] = useState<any[]>([])
   const [calculado, setCalculado] = useState<Calculado | null>(null)
   const [pvFormula, setPvFormula] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => { premissasApi.listar().then(setTemplates).catch(() => {}) }, [])
+  useEffect(() => { operadoresApi.listar().then(setVendedores).catch(() => {}) }, [])
 
   const base = Number(draft.custoBase) || 0
   const premissas = draft.premissasAplicadas
@@ -102,10 +106,55 @@ export function Step6_Resumo() {
   const removerItem = (key: string) =>
     setDraft({ itens: itens.filter(i => i._key !== key) })
 
+  const economiaMensal = (() => {
+    const tarifa = Number(draft.tarifaEnergia) || 0
+    const consumo = Number(draft.consumoMensal) || 0
+    const pct = Number(draft.economiaMensalP) || 0
+    return tarifa > 0 && consumo > 0 ? consumo * tarifa * (pct / 100) : 0
+  })()
+
+  const areaUtilCalc = (() => {
+    const qtd = Number(draft.qtdModulos) || Number(draft.qtdPlacas) || 0
+    return qtd > 0 ? (qtd * 1.9).toFixed(1) : (draft.areaUtil ? String(draft.areaUtil) : '')
+  })()
+
+  const geracaoMensal = Number(draft.consumoMensal) || 0
+
   const handleSalvar = async () => {
-    if (!draft.titulo || !base) return
+    if (!draft.titulo) { setSaveError('Informe o título do orçamento'); return }
+    if (!base) { setSaveError('Informe o custo base'); return }
+    setSaveError(null)
     setLoading(true)
     try {
+      // Build campos_extras with all solar + financial data + user custom fields
+      const solarData: Record<string, string> = {
+        // Dimensionamento
+        consumo_mensal: String(draft.consumoMensal || ''),
+        potencia_sistema: draft.kwpSistema ? String(draft.kwpSistema) : '',
+        geracao_mensal: geracaoMensal ? String(geracaoMensal) : '',
+        area_util: areaUtilCalc,
+        // Módulo
+        modulo_fabricante: draft.moduloMarca || '',
+        modulo_modelo: draft.moduloModelo || '',
+        modulo_potencia: draft.moduloPotencia ? String(draft.moduloPotencia) : '',
+        modulo_quantidade: draft.qtdModulos ? String(draft.qtdModulos) : '',
+        vc_modulo_eficiencia: draft.moduloEficiencia ? String(draft.moduloEficiencia) : '',
+        // Inversor
+        inversor_fabricante: draft.inversorMarca || '',
+        inversor_potencia: draft.inversorPotencia ? String(draft.inversorPotencia) : '',
+        inversor_potencia_nominal: draft.inversorPotencia ? String(draft.inversorPotencia * 1000) : '',
+        inversores_utilizados: draft.qtdInversores ? String(draft.qtdInversores) : '',
+        // Análise econômica
+        tarifa_energia: String(draft.tarifaEnergia || ''),
+        economia_mensal: economiaMensal ? economiaMensal.toFixed(2) : '',
+        economia_mensal_p: String(draft.economiaMensalP || ''),
+        inflacao_energetica: String(draft.inflacaoEnergetica || ''),
+        perda_eficiencia_anual: String(draft.perdaEficienciaAnual || ''),
+        // Endereço instalação
+        cliente_complemento: draft.clienteComplemento || '',
+      }
+      const campos_extras = { ...solarData, ...draft.camposExtras }
+
       const payload = {
         titulo: draft.titulo, custo_base: base,
         valor_venda: draft.valorVendaManual ? Number(draft.valorVendaManual) : undefined,
@@ -113,7 +162,7 @@ export function Step6_Resumo() {
         vendedor_id: draft.vendedorId || undefined,
         validade_dias: draft.validadeDias,
         observacoes: draft.observacoes || undefined,
-        campos_extras: draft.camposExtras,
+        campos_extras,
         premissas: premissas.map((p, idx) => ({
           premissa_id: p.premissa_id || undefined, nome: p.nome, descricao: p.descricao,
           tipo: p.tipo, valor: p.valor, ordem: idx,
@@ -139,15 +188,103 @@ export function Step6_Resumo() {
         <div className="lg:col-span-2 space-y-5">
           <h2 className="text-2xl font-bold text-zinc-900">Resumo do Orçamento</h2>
 
-          {/* System summary */}
-          <div className="bg-gradient-to-r from-indigo-50 to-blue-50 rounded-xl p-5 border border-indigo-100">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-              <div><span className="text-xs text-indigo-500 font-semibold">Módulo</span><p className="font-bold text-indigo-900">{draft.moduloMarca || '—'} {draft.moduloPotencia ? `${draft.moduloPotencia}W` : ''}</p></div>
-              <div><span className="text-xs text-indigo-500 font-semibold">Qtd Módulos</span><p className="font-bold text-indigo-900">{draft.qtdModulos || '—'}</p></div>
-              <div><span className="text-xs text-indigo-500 font-semibold">Inversor</span><p className="font-bold text-indigo-900">{draft.inversorMarca || '—'} {draft.inversorPotencia ? `${draft.inversorPotencia}kW` : ''}</p></div>
-              <div><span className="text-xs text-indigo-500 font-semibold">kWp</span><p className="font-bold text-indigo-900">{draft.kwpSistema ? `${draft.kwpSistema} kWp` : '—'}</p></div>
+          {/* System summary — só exibe se há dados solares */}
+          {(draft.moduloMarca || draft.inversorMarca || draft.kwpSistema) && (
+            <div className="bg-gradient-to-r from-indigo-50 to-blue-50 rounded-xl p-5 border border-indigo-100">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                <div><span className="text-xs text-indigo-500 font-semibold">Módulo</span><p className="font-bold text-indigo-900">{draft.moduloMarca || '—'} {draft.moduloPotencia ? `${draft.moduloPotencia}W` : ''}</p></div>
+                <div><span className="text-xs text-indigo-500 font-semibold">Qtd Módulos</span><p className="font-bold text-indigo-900">{draft.qtdModulos || '—'}</p></div>
+                <div><span className="text-xs text-indigo-500 font-semibold">Inversor</span><p className="font-bold text-indigo-900">{draft.inversorMarca || '—'} {draft.inversorPotencia ? `${draft.inversorPotencia}kW` : ''}</p></div>
+                <div><span className="text-xs text-indigo-500 font-semibold">kWp</span><p className="font-bold text-indigo-900">{draft.kwpSistema ? `${draft.kwpSistema} kWp` : '—'}</p></div>
+              </div>
+            </div>
+          )}
+
+          {/* Análise Econômica — sempre visível para preenchimento do template */}
+          <div className="panel">
+            <div className="panel-header">
+              <span className="panel-title">Análise Econômica</span>
+              <span className="text-xs text-zinc-400">Dados usados no template DOCX</span>
+            </div>
+            <div className="panel-body space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="form-label">Tarifa energia (R$/kWh)</label>
+                  <input type="number" value={draft.tarifaEnergia}
+                    onChange={e => setDraft({ tarifaEnergia: e.target.value === '' ? '' : +e.target.value })}
+                    min={0} step={0.01} placeholder="0,85" className="form-input" />
+                </div>
+                <div>
+                  <label className="form-label">Economia esperada (%)</label>
+                  <input type="number" value={draft.economiaMensalP}
+                    onChange={e => setDraft({ economiaMensalP: e.target.value === '' ? '' : +e.target.value })}
+                    min={0} max={100} step={1} placeholder="95" className="form-input" />
+                </div>
+                <div>
+                  <label className="form-label">Inflação energética (% a.a.)</label>
+                  <input type="number" value={draft.inflacaoEnergetica}
+                    onChange={e => setDraft({ inflacaoEnergetica: e.target.value === '' ? '' : +e.target.value })}
+                    min={0} step={0.1} placeholder="8" className="form-input" />
+                </div>
+                <div>
+                  <label className="form-label">Perda eficiência (% a.a.)</label>
+                  <input type="number" value={draft.perdaEficienciaAnual}
+                    onChange={e => setDraft({ perdaEficienciaAnual: e.target.value === '' ? '' : +e.target.value })}
+                    min={0} max={5} step={0.1} placeholder="0,7" className="form-input" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="form-label">Eficiência do módulo (%)</label>
+                  <input type="number" value={draft.moduloEficiencia}
+                    onChange={e => setDraft({ moduloEficiencia: e.target.value === '' ? '' : +e.target.value })}
+                    min={0} max={30} step={0.1} placeholder="21" className="form-input" />
+                </div>
+                <div>
+                  <label className="form-label">Área útil (m²)</label>
+                  <input type="number" value={draft.areaUtil || areaUtilCalc}
+                    onChange={e => setDraft({ areaUtil: e.target.value === '' ? '' : +e.target.value })}
+                    min={0} step={0.1} placeholder={areaUtilCalc || 'Auto'} className="form-input" />
+                  {areaUtilCalc && !draft.areaUtil && (
+                    <p className="text-xs text-zinc-400 mt-0.5">Calculado: {areaUtilCalc} m²</p>
+                  )}
+                </div>
+                <div>
+                  <label className="form-label">End. de Instalação</label>
+                  <input type="text" value={draft.clienteComplemento}
+                    onChange={e => setDraft({ clienteComplemento: e.target.value })}
+                    placeholder="Ex: Rua das Flores, 123" className="form-input" />
+                </div>
+                {economiaMensal > 0 && (
+                  <div className="bg-green-50 rounded-lg p-3 border border-green-100 flex flex-col justify-center">
+                    <p className="text-xs text-green-600 font-semibold">Economia mensal</p>
+                    <p className="text-lg font-bold text-green-800">
+                      {economiaMensal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </p>
+                    <p className="text-xs text-green-500">{draft.economiaMensalP}% de {draft.consumoMensal || 0} kWh × R$ {draft.tarifaEnergia}/kWh</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+
+          {/* Vendedor e comissão */}
+          {draft.vendedorId && (() => {
+            const v = vendedores.find((x: any) => x.id === draft.vendedorId)
+            if (!v) return null
+            return (
+              <div className="flex items-center gap-3 p-4 rounded-xl border border-emerald-200 bg-emerald-50">
+                <UserCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                <div className="text-sm text-emerald-800">
+                  <span className="font-semibold">{v.nome}</span>
+                  {v.comissao_percentual > 0
+                    ? <span className="ml-2 text-emerald-600">— comissão de {v.comissao_percentual}% sobre o valor de venda (aplicada na aprovação)</span>
+                    : <span className="ml-2 text-zinc-500">— sem comissão configurada</span>
+                  }
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Custo base */}
           <div className="panel">
@@ -224,7 +361,7 @@ export function Step6_Resumo() {
                       <tr key={p._key} className={locked ? 'bg-amber-50/50' : ''}>
                         <td>
                           <div className="flex items-center gap-1.5">
-                            {locked && <Lock className="w-3 h-3 text-amber-500 shrink-0" title="Definida pelo administrador" />}
+                            {locked && <span title="Definida pelo administrador"><Lock className="w-3 h-3 text-amber-500 shrink-0" /></span>}
                             <input value={p.nome}
                               onChange={e => !locked && atualizarPremissa(p._key, { nome: e.target.value })}
                               disabled={locked}
@@ -356,10 +493,13 @@ export function Step6_Resumo() {
                 )}
               </div>
             </div>
-            <div className="px-5 pb-5">
+            <div className="px-5 pb-5 space-y-3">
+              {saveError && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>
+              )}
               <button
                 onClick={handleSalvar}
-                disabled={loading || !draft.titulo || !base}
+                disabled={loading}
                 className="btn-primary w-full justify-center"
               >
                 {loading ? 'Salvando...' : !id ? 'Criar Orçamento' : 'Salvar Alterações'}

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
-import { Lock, Pencil, Plus, Save, Trash2, Upload, Download } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Lock, Pencil, Plus, Save, Trash2, LayoutTemplate, ExternalLink } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { premissasApi, configEmpresaApi, variaveisApi } from '../../api/settings'
-import { orcamentosApi } from '../../api/quotes'
 
 type Aba = 'premissas' | 'empresa' | 'templates'
 
@@ -27,9 +27,6 @@ export function Configuracoes() {
   const [varCustom, setVarCustom] = useState<{ id: string; chave: string; label: string; grupo: string }[]>([])
   const [loadingVars, setLoadingVars] = useState(false)
   const [modalVar, setModalVar] = useState<any>(null)
-  const [uploadingTemplate, setUploadingTemplate] = useState(false)
-  const [templateOk, setTemplateOk] = useState<boolean | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const carregarPremissas = () => {
     setLoadingPremissas(true)
@@ -84,39 +81,6 @@ export function Configuracoes() {
   const salvarConfig = async () => {
     setSavingConfig(true)
     try { await configEmpresaApi.atualizar(config) } finally { setSavingConfig(false) }
-  }
-
-  // ── Template handlers ─────────────────────────────────────────────────────────
-  const handleUploadTemplate = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploadingTemplate(true)
-    try {
-      await orcamentosApi.uploadTemplate(file)
-      setTemplateOk(true)
-      alert('Template enviado com sucesso!')
-    } catch {
-      alert('Erro ao enviar template.')
-    } finally {
-      setUploadingTemplate(false)
-      e.target.value = ''
-    }
-  }
-
-  const handleBaixarModelo = async () => {
-    try {
-      const blob = await orcamentosApi.baixarTemplateExemplo()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'modelo-proposta-comercial.docx'
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
-    } catch {
-      alert('Erro ao baixar modelo')
-    }
   }
 
   // ── Variáveis handlers ────────────────────────────────────────────────────────
@@ -255,27 +219,20 @@ export function Configuracoes() {
       {aba === 'templates' && (
         <div className="space-y-6">
 
-          {/* Upload de template */}
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-            <h2 className="font-semibold text-gray-800 mb-1">Template de Proposta (.docx)</h2>
-            <p className="text-sm text-gray-500 mb-4">
-              Faça upload do seu arquivo Word com as variáveis no formato <code className="bg-gray-100 px-1 rounded text-xs">{`{{VARIAVEL}}`}</code> ou <code className="bg-gray-100 px-1 rounded text-xs">[variavel]</code>. O template configurado será usado ao gerar propostas em todos os orçamentos.
-            </p>
-            <div className="flex gap-3 flex-wrap">
-              <input ref={fileInputRef} type="file" accept=".docx" className="hidden" onChange={handleUploadTemplate} />
-              <button onClick={() => fileInputRef.current?.click()} disabled={uploadingTemplate}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50">
-                <Upload className="w-4 h-4" />
-                {uploadingTemplate ? 'Enviando...' : 'Enviar Template (.docx)'}
-              </button>
-              <button onClick={handleBaixarModelo}
-                className="flex items-center gap-2 border text-gray-600 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium">
-                <Download className="w-4 h-4" /> Baixar Modelo de Exemplo
-              </button>
+          {/* Templates moved to dedicated page */}
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 flex items-start gap-4">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
+              <LayoutTemplate className="w-5 h-5 text-blue-600" />
             </div>
-            {templateOk && (
-              <p className="mt-3 text-sm text-green-600 font-medium">Template enviado com sucesso.</p>
-            )}
+            <div className="flex-1">
+              <h2 className="font-semibold text-gray-800 mb-1">Templates de Proposta (.docx)</h2>
+              <p className="text-sm text-gray-500 mb-3">
+                Gerencie seus modelos de proposta — faça upload, defina o padrão, baixe os arquivos e veja as variáveis disponíveis na página dedicada de Templates.
+              </p>
+              <Link to="/templates" className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                <ExternalLink className="w-4 h-4" /> Ir para Templates
+              </Link>
+            </div>
           </div>
 
           {/* Variáveis personalizadas */}

@@ -24,7 +24,7 @@ export function Financeiro() {
   const [categorias, setCategorias] = useState<any[]>([])
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroContaTipo, setFiltroContaTipo] = useState('')
-  const [filtroContaStatus, setFiltroContaStatus] = useState('pendente')
+  const [filtroContaStatus, setFiltroContaStatus] = useState('')
   const [vencendoDias, setVencendoDias] = useState<number | ''>('')
   const [modal, setModal] = useState<any>(null)
   const [modalConta, setModalConta] = useState<any>(null)

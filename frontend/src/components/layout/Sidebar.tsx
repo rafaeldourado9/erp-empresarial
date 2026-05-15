@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, FileText, Users, DollarSign,
   TrendingUp, ShoppingCart, Settings, LogOut, Sun,
-  Award, Search, UserCheck, PanelLeftClose, PanelLeftOpen,
+  Award, Search, UserCheck, PanelLeftClose, PanelLeftOpen, LayoutTemplate,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/auth.store'
 
@@ -12,6 +12,7 @@ const navGroups = [
     items: [
       { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
       { to: '/orcamentos', icon: FileText, label: 'Orçamentos' },
+      { to: '/templates', icon: LayoutTemplate, label: 'Templates' },
       { to: '/caixa', icon: ShoppingCart, label: 'Caixa' },
       { to: '/estoque', icon: Package, label: 'Estoque' },
     ],

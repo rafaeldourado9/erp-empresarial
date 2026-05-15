@@ -68,10 +68,18 @@ class OrcamentoRepository:
 
     async def _proximo_numero(self, empresa_id: UUID) -> str:
         result = await self._db.execute(
-            select(func.count()).where(OrcamentoORM.empresa_id == str(empresa_id))
+            select(func.max(OrcamentoORM.numero))
+            .where(OrcamentoORM.empresa_id == str(empresa_id))
         )
-        count = result.scalar() or 0
-        return f"ORC-{count + 1:05d}"
+        ultimo = result.scalar()
+        if ultimo and ultimo.startswith("ORC-"):
+            try:
+                proximo = int(ultimo[4:]) + 1
+            except ValueError:
+                proximo = 1
+        else:
+            proximo = 1
+        return f"ORC-{proximo:05d}"
 
     async def criar(
         self, empresa_id: UUID, criado_por: UUID, titulo: str,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,11 +31,23 @@ def _auth_service(db: AsyncSession) -> AuthService:
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 @router.post("/auth/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: Annotated[AsyncSession, Depends(get_db)]) -> TokenResponse:
+async def login(body: LoginRequest, request: Request, db: Annotated[AsyncSession, Depends(get_db)]) -> TokenResponse:
     try:
         tokens = await _auth_service(db).login(email=str(body.email), senha=body.senha)
     except (CredenciaisInvalidasError, UsuarioInativoError) as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+
+    usuario = await UsuarioRepository(db).buscar_por_email(str(body.email))
+    if usuario:
+        from app.audit.application.service import registrar_evento
+        await registrar_evento(
+            db, usuario_id=str(usuario.id), usuario_nome=usuario.nome,
+            empresa_id=str(usuario.empresa_id) if usuario.empresa_id else None,
+            grupo_id=str(usuario.grupo_id) if usuario.grupo_id else None,
+            acao="login", recurso="sessao",
+            ip=request.client.host if request.client else None,
+        )
+
     return TokenResponse(access_token=tokens.access_token, refresh_token=tokens.refresh_token)
 
 

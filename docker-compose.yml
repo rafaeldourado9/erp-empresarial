@@ -38,6 +38,7 @@ services:
       - ./backend/app:/app/app
       - ./backend/alembic:/app/alembic
       - ./backend/keys:/app/keys
+      - ./backend/templates:/app/templates
     environment:
       APP_ENV: development
       DEBUG: "true"

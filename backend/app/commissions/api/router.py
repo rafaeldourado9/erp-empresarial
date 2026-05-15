@@ -124,21 +124,18 @@ async def pagar_comissao(
         return _to_response(c)
     c.status = "pago"
 
-    # Auto-criar conta a pagar com origem=comissao (Fase 4.A)
-    from app.finance.infrastructure.orm_models import ContaORM
-    conta = ContaORM(
-        id=str(uuid4()), empresa_id=eid, tipo="pagar",
+    # Registra saída de caixa ao pagar comissão
+    from app.finance.infrastructure.orm_models import MovimentoCaixaORM
+    movimento = MovimentoCaixaORM(
+        id=str(uuid4()), empresa_id=eid, tipo="saida",
+        categoria="comissao",
         descricao=f"Comissão {c.orcamento_numero or ''} — {c.vendedor_nome or 'vendedor'}".strip(),
-        parceiro=c.vendedor_nome,
-        valor=float(c.valor_comissao),
-        data_vencimento=date.today(),
-        status="pendente",
+        valor=float(c.valor_comissao), data=date.today(),
         orcamento_id=c.orcamento_id,
-        observacoes=f"Auto-criada ao marcar comissão como paga",
-        origem="comissao",
         criado_por=str(usuario.id), criado_em=datetime.now(UTC),
+        conciliado=True, origem="comissao",
     )
-    db.add(conta)
+    db.add(movimento)
     await db.flush()
 
     return _to_response(c)
